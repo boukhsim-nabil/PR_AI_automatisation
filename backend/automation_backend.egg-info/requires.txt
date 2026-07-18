@@ -1,0 +1,10 @@
+alembic<2.0,>=1.18
+fastapi<1.0,>=0.115
+psycopg[binary]<4.0,>=3.2
+sqlalchemy<3.0,>=2.0.51
+uvicorn[standard]<1.0,>=0.34
+
+[test]
+httpx<1.0,>=0.28
+pytest<9.0,>=8.3
+pytest-asyncio<1.0,>=0.25
