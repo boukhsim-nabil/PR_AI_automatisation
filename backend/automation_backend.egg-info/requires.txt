@@ -1,10 +1,13 @@
 alembic<2.0,>=1.18
+email-validator<3.0,>=2.2
 fastapi<1.0,>=0.115
 psycopg[binary]<4.0,>=3.2
+pwdlib[argon2]<1.0,>=0.3
+pyjwt<3.0,>=2.10
 sqlalchemy<3.0,>=2.0.51
 uvicorn[standard]<1.0,>=0.34
 
 [test]
-httpx<1.0,>=0.28
+httpx2<3.0,>=2.0
 pytest<9.0,>=8.3
 pytest-asyncio<1.0,>=0.25

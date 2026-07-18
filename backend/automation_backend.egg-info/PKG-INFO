@@ -3,11 +3,14 @@ Name: automation-backend
 Version: 0.1.0
 Requires-Python: >=3.12
 Requires-Dist: alembic<2.0,>=1.18
+Requires-Dist: email-validator<3.0,>=2.2
 Requires-Dist: fastapi<1.0,>=0.115
 Requires-Dist: psycopg[binary]<4.0,>=3.2
+Requires-Dist: pwdlib[argon2]<1.0,>=0.3
+Requires-Dist: pyjwt<3.0,>=2.10
 Requires-Dist: sqlalchemy<3.0,>=2.0.51
 Requires-Dist: uvicorn[standard]<1.0,>=0.34
 Provides-Extra: test
-Requires-Dist: httpx<1.0,>=0.28; extra == "test"
+Requires-Dist: httpx2<3.0,>=2.0; extra == "test"
 Requires-Dist: pytest<9.0,>=8.3; extra == "test"
 Requires-Dist: pytest-asyncio<1.0,>=0.25; extra == "test"
