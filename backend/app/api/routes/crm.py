@@ -9,8 +9,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response,
 from sqlalchemy import Select, and_, false, func, or_, select
 from sqlalchemy.orm import Session
 
-from app.api.authorization import MembershipAuthorization, require_permission
-from app.db.models import Contact, CrmActivity, CrmTask, Lead, Membership, User
+from app.api.authorization import MembershipAuthorization, require_permission, require_permissions
+from app.db.models import Contact, CrmActivity, CrmTask, Lead, Membership, Role, User
 from app.db.session import get_db
 from app.schemas.crm import (
     ActivityCreate,
@@ -39,6 +39,8 @@ from app.schemas.crm import (
     LeadStatusChange,
     LeadUpdate,
     LeadUrgency,
+    LeadWithContactCreate,
+    LeadWithContactRead,
     SortDirection,
     TaskCreate,
     TaskFilters,
@@ -77,6 +79,10 @@ TaskManager = Annotated[
     MembershipAuthorization,
     Depends(require_permission("crm.tasks.manage")),
 ]
+AssigneeReader = Annotated[
+    MembershipAuthorization,
+    Depends(require_permissions("crm.read", "members.read")),
+]
 
 
 def _audit(
@@ -101,6 +107,56 @@ def _audit(
             metadata=metadata,
         ),
     )
+
+
+def _audit_hidden_resource(
+    request: Request,
+    access: MembershipAuthorization,
+    *,
+    resource_type: str,
+    resource_id: UUID,
+) -> None:
+    AuditService.record(
+        request.scope,
+        AuditEvent(
+            company_id=access.company.id,
+            actor_user_id=access.user.id,
+            actor_membership_id=access.membership.id,
+            action="security.cross_tenant",
+            result="denied",
+            resource_type=resource_type,
+            resource_id=str(resource_id),
+            metadata={"reason": "resource_not_visible"},
+        ),
+    )
+
+
+def _contact_or_404(
+    db: Session,
+    request: Request,
+    access: MembershipAuthorization,
+    contact_id: UUID,
+) -> Contact:
+    try:
+        return get_contact(db, access.company.id, contact_id)
+    except HTTPException as exc:
+        if exc.status_code == status.HTTP_404_NOT_FOUND:
+            _audit_hidden_resource(request, access, resource_type="contact", resource_id=contact_id)
+        raise
+
+
+def _task_or_404(
+    db: Session,
+    request: Request,
+    access: MembershipAuthorization,
+    task_id: UUID,
+) -> CrmTask:
+    try:
+        return get_task(db, access.company.id, task_id)
+    except HTTPException as exc:
+        if exc.status_code == status.HTTP_404_NOT_FOUND:
+            _audit_hidden_resource(request, access, resource_type="crm_task", resource_id=task_id)
+        raise
 
 
 def _contact_list_item(contact: Contact) -> ContactListItem:
@@ -194,29 +250,50 @@ def _activity_read(activity: CrmActivity) -> ActivityRead:
     )
 
 
-def _get_lead_with_contact(db: Session, company_id: UUID, lead_id: UUID) -> tuple[Lead, Contact]:
+def _get_lead_with_contact(
+    db: Session,
+    request: Request,
+    access: MembershipAuthorization,
+    lead_id: UUID,
+) -> tuple[Lead, Contact]:
     row = db.execute(
         select(Lead, Contact)
         .join(Contact, and_(Contact.id == Lead.contact_id, Contact.company_id == Lead.company_id))
-        .where(Lead.id == lead_id, Lead.company_id == company_id)
+        .where(Lead.id == lead_id, Lead.company_id == access.company.id)
     ).one_or_none()
     if row is None:
+        _audit_hidden_resource(request, access, resource_type="lead", resource_id=lead_id)
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Lead not found")
     return row._tuple()
 
 
+def _lead_or_404(
+    db: Session,
+    request: Request,
+    access: MembershipAuthorization,
+    lead_id: UUID,
+) -> Lead:
+    try:
+        return get_lead(db, access.company.id, lead_id)
+    except HTTPException as exc:
+        if exc.status_code == status.HTTP_404_NOT_FOUND:
+            _audit_hidden_resource(request, access, resource_type="lead", resource_id=lead_id)
+        raise
+
+
 def _validate_task_resources(
     db: Session,
-    company_id: UUID,
+    request: Request,
+    access: MembershipAuthorization,
     lead_id: UUID | None,
     contact_id: UUID | None,
 ) -> tuple[UUID | None, UUID | None]:
-    lead = get_lead(db, company_id, lead_id) if lead_id else None
-    contact = get_contact(db, company_id, contact_id) if contact_id else None
+    lead = _lead_or_404(db, request, access, lead_id) if lead_id else None
+    contact = _contact_or_404(db, request, access, contact_id) if contact_id else None
     if lead is not None:
         ensure_lead_modifiable(lead)
         if contact is None:
-            contact = get_contact(db, company_id, lead.contact_id)
+            contact = _contact_or_404(db, request, access, lead.contact_id)
         elif contact.id != lead.contact_id:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -256,15 +333,21 @@ def crm_summary(_access: CRMReader, db: DatabaseSession) -> CrmSummary:
 
 
 @router.get("/assignees", response_model=list[AssigneeRead])
-def list_assignees(_access: CRMReader, db: DatabaseSession) -> list[AssigneeRead]:
+def list_assignees(_access: AssigneeReader, db: DatabaseSession) -> list[AssigneeRead]:
     rows = db.execute(
-        select(Membership.id, User.display_name, User.email)
+        select(Membership.id, User.display_name, Membership.status, Role.code)
         .join(User, User.id == Membership.user_id)
+        .outerjoin(Role, Role.id == Membership.role_id)
         .where(Membership.status == "active", User.status == "active")
-        .order_by(User.display_name.asc().nullslast(), User.email.asc())
+        .order_by(User.display_name.asc().nullslast(), Membership.id.asc())
     ).all()
     return [
-        AssigneeRead(membership_id=row.id, display_name=row.display_name, email=row.email)
+        AssigneeRead(
+            membership_id=row.id,
+            display_name=row.display_name,
+            status=row.status,
+            role=row.code,
+        )
         for row in rows
     ]
 
@@ -353,8 +436,13 @@ def list_contacts(
 
 
 @router.get("/contacts/{contact_id}", response_model=ContactRead)
-def read_contact(contact_id: UUID, access: CRMReader, db: DatabaseSession) -> ContactRead:
-    return _contact_read(get_contact(db, access.company.id, contact_id))
+def read_contact(
+    contact_id: UUID,
+    request: Request,
+    access: CRMReader,
+    db: DatabaseSession,
+) -> ContactRead:
+    return _contact_read(_contact_or_404(db, request, access, contact_id))
 
 
 @router.patch("/contacts/{contact_id}", response_model=ContactRead)
@@ -365,7 +453,7 @@ def update_contact(
     access: CRMEditor,
     db: DatabaseSession,
 ) -> ContactRead:
-    contact = get_contact(db, access.company.id, contact_id)
+    contact = _contact_or_404(db, request, access, contact_id)
     if contact.status == "archived":
         raise HTTPException(status_code=409, detail="Archived contact cannot be modified")
     values = payload.model_dump(exclude_unset=True)
@@ -400,7 +488,9 @@ def archive_contact(
     access: CRMArchiver,
     db: DatabaseSession,
 ) -> Response:
-    contact = get_contact(db, access.company.id, contact_id)
+    contact = _contact_or_404(db, request, access, contact_id)
+    if contact.status == "archived" and contact.archived_at is not None:
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
     contact.status = "archived"
     contact.archived_at = contact.archived_at or datetime.now(UTC)
     db.flush()
@@ -421,7 +511,7 @@ def create_lead(
     access: CRMCreator,
     db: DatabaseSession,
 ) -> LeadRead:
-    contact = get_contact(db, access.company.id, payload.contact_id)
+    contact = _contact_or_404(db, request, access, payload.contact_id)
     ensure_contact_accepts_lead(contact)
     lead = Lead(
         company_id=access.company.id,
@@ -448,6 +538,70 @@ def create_lead(
         resource_id=lead.id,
     )
     return _lead_read(lead, contact)
+
+
+@router.post(
+    "/leads/with-contact",
+    response_model=LeadWithContactRead,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_lead_with_contact(
+    payload: LeadWithContactCreate,
+    request: Request,
+    access: CRMCreator,
+    db: DatabaseSession,
+) -> LeadWithContactRead:
+    contact_values = payload.contact.model_dump()
+    contact_values["email"] = str(payload.contact.email) if payload.contact.email else None
+    contact_values["email_normalized"] = normalize_email(contact_values["email"])
+    contact_values["phone_normalized"] = normalize_phone(payload.contact.phone)
+    contact = Contact(
+        company_id=access.company.id,
+        created_by_membership_id=access.membership.id,
+        **contact_values,
+    )
+    db.add(contact)
+    flush_or_conflict(db)
+
+    lead = Lead(
+        company_id=access.company.id,
+        contact_id=contact.id,
+        created_by_membership_id=access.membership.id,
+        **payload.lead.model_dump(),
+    )
+    db.add(lead)
+    db.flush()
+    add_activity(
+        db,
+        company_id=access.company.id,
+        contact_id=contact.id,
+        lead_id=lead.id,
+        actor_membership_id=access.membership.id,
+        activity_type="system",
+        subject="Prospect créé",
+    )
+    db.refresh(contact)
+    db.refresh(lead)
+    _audit(
+        request,
+        access,
+        action="crm.contact.created",
+        resource_type="contact",
+        resource_id=contact.id,
+        metadata={"operation": "lead_with_contact"},
+    )
+    _audit(
+        request,
+        access,
+        action="crm.lead.created",
+        resource_type="lead",
+        resource_id=lead.id,
+        metadata={"contact_id": contact.id, "operation": "lead_with_contact"},
+    )
+    return LeadWithContactRead(
+        contact=_contact_read(contact),
+        lead=_lead_read(lead, contact),
+    )
 
 
 @router.get("/leads", response_model=LeadPage)
@@ -526,8 +680,13 @@ def list_leads(
 
 
 @router.get("/leads/{lead_id}", response_model=LeadRead)
-def read_lead(lead_id: UUID, access: CRMReader, db: DatabaseSession) -> LeadRead:
-    lead, contact = _get_lead_with_contact(db, access.company.id, lead_id)
+def read_lead(
+    lead_id: UUID,
+    request: Request,
+    access: CRMReader,
+    db: DatabaseSession,
+) -> LeadRead:
+    lead, contact = _get_lead_with_contact(db, request, access, lead_id)
     return _lead_read(lead, contact)
 
 
@@ -539,7 +698,7 @@ def update_lead(
     access: CRMEditor,
     db: DatabaseSession,
 ) -> LeadRead:
-    lead, contact = _get_lead_with_contact(db, access.company.id, lead_id)
+    lead, contact = _get_lead_with_contact(db, request, access, lead_id)
     ensure_lead_modifiable(lead)
     values = payload.model_dump(exclude_unset=True)
     for key, item in values.items():
@@ -564,7 +723,9 @@ def archive_lead(
     access: CRMArchiver,
     db: DatabaseSession,
 ) -> Response:
-    lead = get_lead(db, access.company.id, lead_id)
+    lead = _lead_or_404(db, request, access, lead_id)
+    if lead.status == "archived" and lead.archived_at is not None:
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
     lead.status = "archived"
     lead.archived_at = lead.archived_at or datetime.now(UTC)
     db.flush()
@@ -596,7 +757,7 @@ def assign_lead(
     access: CRMAssigner,
     db: DatabaseSession,
 ) -> LeadRead:
-    lead, contact = _get_lead_with_contact(db, access.company.id, lead_id)
+    lead, contact = _get_lead_with_contact(db, request, access, lead_id)
     ensure_lead_modifiable(lead)
     ensure_active_membership(db, access.company.id, payload.assigned_membership_id)
     previous = lead.assigned_membership_id
@@ -632,7 +793,7 @@ def change_lead_status(
     access: CRMEditor,
     db: DatabaseSession,
 ) -> LeadRead:
-    lead, contact = _get_lead_with_contact(db, access.company.id, lead_id)
+    lead, contact = _get_lead_with_contact(db, request, access, lead_id)
     ensure_lead_modifiable(lead)
     if payload.status is LeadStatus.ARCHIVED:
         raise HTTPException(status_code=422, detail="Use the archive endpoint")
@@ -675,12 +836,13 @@ def change_lead_status(
 @router.get("/leads/{lead_id}/activities", response_model=ActivityPage)
 def list_lead_activities(
     lead_id: UUID,
+    request: Request,
     access: CRMReader,
     db: DatabaseSession,
-    page: int = Query(default=1, ge=1, le=100_000),
+    page: int = Query(default=1, ge=1, le=100),
     page_size: int = Query(default=50, ge=1, le=100),
 ) -> ActivityPage:
-    get_lead(db, access.company.id, lead_id)
+    _lead_or_404(db, request, access, lead_id)
     clauses = [CrmActivity.lead_id == lead_id]
     total = db.scalar(select(func.count()).select_from(CrmActivity).where(*clauses)) or 0
     activities = db.scalars(
@@ -711,7 +873,7 @@ def create_lead_activity(
     access: ActivityCreator,
     db: DatabaseSession,
 ) -> ActivityRead:
-    lead = get_lead(db, access.company.id, lead_id)
+    lead = _lead_or_404(db, request, access, lead_id)
     ensure_lead_modifiable(lead)
     activity = add_activity(
         db,
@@ -742,7 +904,7 @@ def create_task(
     db: DatabaseSession,
 ) -> TaskRead:
     lead_id, contact_id = _validate_task_resources(
-        db, access.company.id, payload.lead_id, payload.contact_id
+        db, request, access, payload.lead_id, payload.contact_id
     )
     ensure_active_membership(db, access.company.id, payload.assigned_membership_id)
     values = payload.model_dump(exclude={"lead_id", "contact_id"})
@@ -821,7 +983,7 @@ def update_task(
     access: TaskManager,
     db: DatabaseSession,
 ) -> TaskRead:
-    task = get_task(db, access.company.id, task_id)
+    task = _task_or_404(db, request, access, task_id)
     values = payload.model_dump(exclude_unset=True)
     if "assigned_membership_id" in values:
         ensure_active_membership(db, access.company.id, values["assigned_membership_id"])
@@ -863,7 +1025,7 @@ def complete_task(
     access: TaskManager,
     db: DatabaseSession,
 ) -> TaskRead:
-    task = get_task(db, access.company.id, task_id)
+    task = _task_or_404(db, request, access, task_id)
     task.status = "completed"
     task.completed_at = task.completed_at or datetime.now(UTC)
     db.flush()

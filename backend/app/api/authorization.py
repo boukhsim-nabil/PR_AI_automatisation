@@ -110,10 +110,17 @@ ActiveMembership = Annotated[
 
 
 def require_permission(permission_code: str) -> Callable[..., MembershipAuthorization]:
+    return require_permissions(permission_code)
+
+
+def require_permissions(*permission_codes: str) -> Callable[..., MembershipAuthorization]:
+    required = frozenset(permission_codes)
+
     def permission_dependency(
         request: Request, access: ActiveMembership
     ) -> MembershipAuthorization:
-        if permission_code not in access.permissions:
+        missing = sorted(required - access.permissions)
+        if missing:
             AuditService.record(
                 request.scope,
                 AuditEvent(
@@ -123,7 +130,7 @@ def require_permission(permission_code: str) -> Callable[..., MembershipAuthoriz
                     action="authorization.permission_denied",
                     result="denied",
                     resource_type="permission",
-                    resource_id=permission_code,
+                    resource_id=",".join(missing),
                 ),
             )
             raise HTTPException(

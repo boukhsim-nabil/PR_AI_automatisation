@@ -50,17 +50,18 @@ test.describe.serial("CRM opérationnel", () => {
     await page.getByLabel("Priorité").selectOption("high");
     const leadResponsePromise = page.waitForResponse(
       (response) =>
-        response.url().endsWith("/api/crm/leads") && response.request().method() === "POST",
+        response.url().endsWith("/api/crm/leads/with-contact") &&
+        response.request().method() === "POST",
     );
     await page.getByRole("button", { name: "Créer le contact et le prospect" }).click();
     const leadResponse = await leadResponsePromise;
     expect(leadResponse.status()).toBe(201);
-    const created = (await leadResponse.json()) as { id: string };
-    expect(created.id).toMatch(/^[0-9a-f-]{36}$/i);
+    const created = (await leadResponse.json()) as { lead: { id: string } };
+    expect(created.lead.id).toMatch(/^[0-9a-f-]{36}$/i);
     await expect(page).toHaveURL(/\/dashboard\/crm\/leads\/[0-9a-f-]{36}$/i, {
       timeout: 15_000,
     });
-    createdLeadId = created.id;
+    createdLeadId = created.lead.id;
     expect(createdLeadId).not.toBe("");
     await expect(page.getByRole("heading", { name: createdProspectName })).toBeVisible();
   });
@@ -69,6 +70,40 @@ test.describe.serial("CRM opérationnel", () => {
     await login(page, OWNER_EMAIL!, OWNER_PASSWORD!);
     await page.goto(`/dashboard/crm?search=${encodeURIComponent(createdProspectName)}`);
     await expect(page.getByRole("row").filter({ hasText: createdProspectName })).toBeVisible();
+  });
+
+  test("conserve les champs des formulaires après une erreur API", async ({ page }) => {
+    await login(page, OWNER_EMAIL!, OWNER_PASSWORD!);
+    await page.route("**/api/crm/leads/with-contact", async (route) => {
+      await route.fulfill({
+        status: 503,
+        contentType: "application/json",
+        body: JSON.stringify({ detail: "CRM service unavailable" }),
+      });
+    });
+    await page.goto("/dashboard/crm/leads/new");
+    await page.getByLabel(/Nom.*obligatoire/).fill("Valeur conservée");
+    await page.getByLabel(/Intitulé.*obligatoire/).fill("Projet conservé");
+    await page.getByRole("button", { name: "Créer le contact et le prospect" }).click();
+    await expect(page.getByText("Le service CRM est temporairement indisponible.")).toBeVisible();
+    await expect(page.getByLabel(/Nom.*obligatoire/)).toHaveValue("Valeur conservée");
+    await expect(page.getByLabel(/Intitulé.*obligatoire/)).toHaveValue("Projet conservé");
+    await page.unroute("**/api/crm/leads/with-contact");
+
+    await page.route(`**/api/crm/leads/${SEEDED_LEAD_ID}/activities`, async (route) => {
+      await route.fulfill({
+        status: 503,
+        contentType: "application/json",
+        body: JSON.stringify({ detail: "CRM service unavailable" }),
+      });
+    });
+    await page.goto(`/dashboard/crm/leads/${SEEDED_LEAD_ID}`);
+    await page.getByLabel("Sujet").fill("Note conservée");
+    await page.getByLabel("Note").fill("Contenu à ne pas perdre");
+    await page.getByRole("button", { name: "Ajouter la note" }).click();
+    await expect(page.getByText("Le service CRM est temporairement indisponible.")).toBeVisible();
+    await expect(page.getByLabel("Sujet")).toHaveValue("Note conservée");
+    await expect(page.getByLabel("Note")).toHaveValue("Contenu à ne pas perdre");
   });
 
   test("4. ouvre la fiche détaillée d’un prospect", async ({ page }) => {

@@ -110,7 +110,7 @@ function KpiCard({ group }: { group: KpiGroup }) {
       <div className="p-5 sm:p-6">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">
+            <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-600">
               {group.eyebrow}
             </p>
             <h2 id={`${group.id}-title`} className="mt-3 text-xl font-semibold tracking-[-0.025em] text-slate-950">
@@ -121,16 +121,18 @@ function KpiCard({ group }: { group: KpiGroup }) {
             Mock
           </span>
         </div>
-        <p className="mt-2 text-sm leading-6 text-slate-500">{group.summary}</p>
+        <p className="mt-2 text-sm leading-6 text-slate-600">{group.summary}</p>
 
         <dl className="mt-6 grid grid-cols-3 gap-2 border-t border-slate-200/80 pt-5">
           {group.metrics.map((metric) => (
             <div className="min-w-0" key={metric.label}>
-              <dt className="truncate text-xs text-slate-500" title={metric.label}>{metric.label}</dt>
+              <dt className="truncate text-xs text-slate-600" title={metric.label}>{metric.label}</dt>
               <dd className="mt-1 text-lg font-semibold tracking-tight text-slate-900 sm:text-xl">
                 {metric.value}
+                <span className="mt-0.5 block truncate text-[11px] font-normal text-slate-600">
+                  {metric.detail}
+                </span>
               </dd>
-              <p className="mt-0.5 truncate text-[11px] text-slate-400">{metric.detail}</p>
             </div>
           ))}
         </dl>
@@ -149,7 +151,7 @@ export default function DashboardPage() {
             <h1 id="dashboard-title" className="mt-2 text-3xl font-semibold tracking-[-0.04em] text-slate-950 sm:text-4xl xl:text-5xl">
               Dashboard exécutif
             </h1>
-            <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-500 sm:text-base">
+            <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600 sm:text-base">
               L’essentiel de l’activité, des interventions et de la valeur produite par vos automatisations.
             </p>
           </div>
@@ -157,11 +159,11 @@ export default function DashboardPage() {
           <div className="flex flex-wrap gap-2" aria-label="Filtres du dashboard">
             <button className="filter-button" type="button" aria-label="Période : aujourd’hui">
               Aujourd’hui
-              <span className="ml-2 text-slate-400" aria-hidden="true">⌄</span>
+              <span className="ml-2 text-slate-600" aria-hidden="true">⌄</span>
             </button>
             <button className="filter-button" type="button" aria-label="Équipe : toutes les équipes">
               Toutes les équipes
-              <span className="ml-2 text-slate-400" aria-hidden="true">⌄</span>
+              <span className="ml-2 text-slate-600" aria-hidden="true">⌄</span>
             </button>
           </div>
         </div>
@@ -182,7 +184,7 @@ export default function DashboardPage() {
             <div>
               <p className="card-kicker">Évolution sur 7 jours</p>
               <h2 className="mt-2 text-xl font-semibold tracking-tight text-slate-950">Exécutions automatisées</h2>
-              <p className="mt-1 text-sm text-slate-500">9 842 exécutions · +12,4 % sur la période précédente</p>
+              <p className="mt-1 text-sm text-slate-600">9 842 exécutions · +12,4 % sur la période précédente</p>
             </div>
             <span className="rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-700 ring-1 ring-inset ring-emerald-200">
               Tendance positive
@@ -200,7 +202,7 @@ export default function DashboardPage() {
                     aria-hidden="true"
                   />
                 </div>
-                <span className="text-center text-xs font-medium text-slate-500">{item.day}</span>
+                <span className="text-center text-xs font-medium text-slate-600">{item.day}</span>
               </div>
             ))}
           </div>
@@ -227,7 +229,7 @@ export default function DashboardPage() {
               <li className="flex items-center justify-between gap-4 py-3.5" key={label}>
                 <div className="min-w-0">
                   <p className="text-sm font-semibold text-slate-800">{label}</p>
-                  <p className="mt-1 truncate text-xs text-slate-500">{detail}</p>
+                  <p className="mt-1 truncate text-xs text-slate-600">{detail}</p>
                 </div>
                 <span className={`shrink-0 text-xs font-bold ${status === "Attention" ? "text-amber-700" : "text-emerald-700"}`}>
                   <span aria-hidden="true">{status === "Attention" ? "△" : "●"}</span>{" "}{status}

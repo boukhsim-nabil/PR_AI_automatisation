@@ -160,7 +160,7 @@ a {
 .eyebrow { color: #0f766e; }
 .eyebrow-light { color: #99f6e4; }
 .card-kicker,
-.nav-caption { color: #94a3b8; }
+.nav-caption { color: #475569; }
 
 .story-step {
   display: flex;
@@ -328,7 +328,7 @@ a {
 .nav-index {
   font-family: var(--font-geist-mono), monospace;
   font-size: 0.64rem;
-  color: #94a3b8;
+  color: #475569;
 }
 
 .status-pill,

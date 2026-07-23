@@ -7,7 +7,16 @@ from sqlalchemy import Engine, select, text, update
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
-from app.db.models import AuditLog, Contact, CrmActivity, CrmTask, Lead
+from app.db.models import (
+    AuditLog,
+    Contact,
+    CrmActivity,
+    CrmTask,
+    Lead,
+    Permission,
+    Role,
+    RolePermission,
+)
 
 pytestmark = pytest.mark.integration
 
@@ -334,3 +343,245 @@ def test_viewer_is_read_only(
     )
     assert denied.status_code == 403
     assert denied.json() == {"detail": "Permission denied"}
+
+
+def test_atomic_contact_and_lead_creation_and_duplicate_handling(
+    integration_client: TestClient,
+    integration_identity: IntegrationIdentity,
+    migrated_engine: Engine,
+) -> None:
+    headers = _owner_headers(integration_client, integration_identity)
+    payload = {
+        "contact": {
+            "first_name": "Atomic",
+            "last_name": "Prospect",
+            "email": "Atomic.Prospect@Example.com",
+        },
+        "lead": {
+            "title": "Atomic opportunity",
+            "score": 64,
+            "priority": "medium",
+        },
+    }
+    response = integration_client.post(
+        "/v1/crm/leads/with-contact",
+        headers=headers,
+        json=payload,
+    )
+    assert response.status_code == 201, response.text
+    created = response.json()
+    assert created["lead"]["contact_id"] == created["contact"]["id"]
+    assert "company_id" not in created["contact"]
+    assert "company_id" not in created["lead"]
+
+    duplicate = integration_client.post(
+        "/v1/crm/leads/with-contact",
+        headers=headers,
+        json=payload,
+    )
+    assert duplicate.status_code == 409
+    with Session(migrated_engine) as session:
+        contacts = session.scalars(
+            select(Contact).where(Contact.email_normalized == "atomic.prospect@example.com")
+        ).all()
+        assert len(contacts) == 1
+        assert session.scalar(
+            select(AuditLog).where(
+                AuditLog.action == "crm.lead.created",
+                AuditLog.resource_id == created["lead"]["id"],
+            )
+        )
+
+
+def test_atomic_creation_rolls_back_contact_when_lead_flush_fails(
+    integration_client: TestClient,
+    integration_identity: IntegrationIdentity,
+    migrated_engine: Engine,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from sqlalchemy.orm import Session as SqlAlchemySession
+
+    original_flush = SqlAlchemySession.flush
+
+    def fail_target_lead_flush(
+        session: SqlAlchemySession,
+        objects: object | None = None,
+    ) -> None:
+        if any(
+            isinstance(item, Lead) and item.title == "Force integration rollback"
+            for item in session.new
+        ):
+            raise RuntimeError("synthetic lead persistence failure")
+        original_flush(session, objects)
+
+    monkeypatch.setattr(SqlAlchemySession, "flush", fail_target_lead_flush)
+    headers = _owner_headers(integration_client, integration_identity)
+    with pytest.raises(RuntimeError, match="synthetic lead persistence failure"):
+        integration_client.post(
+            "/v1/crm/leads/with-contact",
+            headers=headers,
+            json={
+                "contact": {
+                    "last_name": "Rollback",
+                    "email": "rollback-atomic@example.com",
+                },
+                "lead": {"title": "Force integration rollback"},
+            },
+        )
+
+    with Session(migrated_engine) as session:
+        assert (
+            session.scalar(
+                select(Contact).where(Contact.email_normalized == "rollback-atomic@example.com")
+            )
+            is None
+        )
+
+
+def test_cross_tenant_contacts_tasks_and_activities_are_hidden_and_audited(
+    integration_client: TestClient,
+    integration_identity: IntegrationIdentity,
+    migrated_engine: Engine,
+) -> None:
+    with Session(migrated_engine, expire_on_commit=False) as session:
+        foreign_contact = Contact(
+            company_id=integration_identity.other_company_id,
+            created_by_membership_id=integration_identity.other_membership_id,
+            last_name="Hidden Contact",
+        )
+        session.add(foreign_contact)
+        session.flush()
+        foreign_lead = Lead(
+            company_id=integration_identity.other_company_id,
+            contact_id=foreign_contact.id,
+            title="Hidden Lead",
+            created_by_membership_id=integration_identity.other_membership_id,
+        )
+        foreign_task = CrmTask(
+            company_id=integration_identity.other_company_id,
+            contact_id=foreign_contact.id,
+            title="Hidden Task",
+            created_by_membership_id=integration_identity.other_membership_id,
+        )
+        session.add_all([foreign_lead, foreign_task])
+        session.commit()
+        contact_id = foreign_contact.id
+        lead_id = foreign_lead.id
+        task_id = foreign_task.id
+
+    headers = _owner_headers(integration_client, integration_identity)
+    assert (
+        integration_client.get(f"/v1/crm/contacts/{contact_id}", headers=headers).status_code == 404
+    )
+    assert (
+        integration_client.patch(
+            f"/v1/crm/contacts/{contact_id}",
+            headers=headers,
+            json={"last_name": "Compromised"},
+        ).status_code
+        == 404
+    )
+    task_list = integration_client.get(
+        f"/v1/crm/tasks?contact_id={contact_id}",
+        headers=headers,
+    )
+    assert task_list.status_code == 200
+    assert task_list.json()["items"] == []
+    assert (
+        integration_client.patch(
+            f"/v1/crm/tasks/{task_id}",
+            headers=headers,
+            json={"title": "Compromised"},
+        ).status_code
+        == 404
+    )
+    assert (
+        integration_client.post(
+            f"/v1/crm/leads/{lead_id}/activities",
+            headers=headers,
+            json={"activity_type": "note", "subject": "Cross tenant"},
+        ).status_code
+        == 404
+    )
+
+    with Session(migrated_engine) as session:
+        denied_resource_ids = set(
+            session.scalars(
+                select(AuditLog.resource_id).where(
+                    AuditLog.company_id == integration_identity.company_id,
+                    AuditLog.action == "security.cross_tenant",
+                )
+            )
+        )
+        assert {str(contact_id), str(task_id), str(lead_id)} <= denied_resource_ids
+
+
+def test_assignees_require_members_read_and_do_not_expose_email(
+    integration_client: TestClient,
+    integration_identity: IntegrationIdentity,
+    migrated_engine: Engine,
+) -> None:
+    owner_headers = _owner_headers(integration_client, integration_identity)
+    allowed = integration_client.get("/v1/crm/assignees", headers=owner_headers)
+    assert allowed.status_code == 200
+    assert allowed.json()
+    assert set(allowed.json()[0]) == {"membership_id", "display_name", "status", "role"}
+
+    with Session(migrated_engine) as session:
+        viewer = session.scalar(select(Role).where(Role.code == "viewer"))
+        members_read = session.scalar(select(Permission).where(Permission.code == "members.read"))
+        assert viewer is not None and members_read is not None
+        link = session.get(RolePermission, (viewer.id, members_read.id))
+        assert link is not None
+        viewer_role_id = viewer.id
+        members_read_id = members_read.id
+        session.delete(link)
+        session.commit()
+
+    try:
+        viewer_headers = _viewer_headers(integration_client, integration_identity)
+        assert (
+            integration_client.get("/v1/crm/assignees", headers=viewer_headers).status_code == 403
+        )
+        assert integration_client.get("/v1/crm/leads", headers=viewer_headers).status_code == 200
+    finally:
+        with Session(migrated_engine) as session:
+            session.add(
+                RolePermission(
+                    role_id=viewer_role_id,
+                    permission_id=members_read_id,
+                )
+            )
+            session.commit()
+
+
+def test_lead_archive_is_idempotent_and_pagination_is_bounded(
+    integration_client: TestClient,
+    integration_identity: IntegrationIdentity,
+    migrated_engine: Engine,
+) -> None:
+    headers = _owner_headers(integration_client, integration_identity)
+    contact = _create_contact(integration_client, headers, "idempotent-archive@example.com")
+    lead = _create_lead(integration_client, headers, contact["id"])
+
+    assert (
+        integration_client.post(f"/v1/crm/leads/{lead['id']}/archive", headers=headers).status_code
+        == 204
+    )
+    assert (
+        integration_client.post(f"/v1/crm/leads/{lead['id']}/archive", headers=headers).status_code
+        == 204
+    )
+    with Session(migrated_engine) as session:
+        archive_activities = session.scalars(
+            select(CrmActivity).where(
+                CrmActivity.lead_id == UUID(lead["id"]),
+                CrmActivity.activity_type == "status_change",
+                CrmActivity.subject == "Prospect archivé",
+            )
+        ).all()
+        assert len(archive_activities) == 1
+
+    for path in ("contacts", "leads", "tasks"):
+        response = integration_client.get(f"/v1/crm/{path}?page=101", headers=headers)
+        assert response.status_code == 422

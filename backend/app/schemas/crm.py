@@ -179,7 +179,7 @@ class ContactFilters(StrictSchema):
     created_to: datetime | None = None
     sort_by: ContactSortField = ContactSortField.CREATED_AT
     sort_direction: SortDirection = SortDirection.DESC
-    page: int = Field(default=1, ge=1, le=100_000)
+    page: int = Field(default=1, ge=1, le=100)
     page_size: int = Field(default=25, ge=1, le=100)
 
 
@@ -191,8 +191,7 @@ class ContactPage(StrictSchema):
     pages: int
 
 
-class LeadCreate(StrictSchema):
-    contact_id: UUID
+class LeadCreateFields(StrictSchema):
     title: ShortText
     need_description: LongText | None = None
     estimated_budget: Decimal | None = Field(default=None, ge=0, max_digits=14, decimal_places=2)
@@ -203,6 +202,15 @@ class LeadCreate(StrictSchema):
     priority: LeadPriority = LeadPriority.MEDIUM
     next_action: Annotated[str, StringConstraints(min_length=1, max_length=500)] | None = None
     next_action_at: datetime | None = None
+
+
+class LeadCreate(LeadCreateFields):
+    contact_id: UUID
+
+
+class LeadWithContactCreate(StrictSchema):
+    contact: ContactCreate
+    lead: LeadCreateFields
 
 
 class LeadUpdate(NonEmptyUpdate):
@@ -264,6 +272,11 @@ class LeadRead(LeadListItem):
     archived_at: datetime | None
 
 
+class LeadWithContactRead(StrictSchema):
+    contact: ContactRead
+    lead: LeadRead
+
+
 class LeadFilters(StrictSchema):
     search: Annotated[str, StringConstraints(min_length=1, max_length=100)] | None = None
     status: LeadStatus | None = None
@@ -274,7 +287,7 @@ class LeadFilters(StrictSchema):
     created_to: datetime | None = None
     sort_by: LeadSortField = LeadSortField.CREATED_AT
     sort_direction: SortDirection = SortDirection.DESC
-    page: int = Field(default=1, ge=1, le=100_000)
+    page: int = Field(default=1, ge=1, le=100)
     page_size: int = Field(default=25, ge=1, le=100)
 
 
@@ -362,7 +375,7 @@ class TaskFilters(StrictSchema):
     assigned_membership_id: UUID | None = None
     due_from: datetime | None = None
     due_to: datetime | None = None
-    page: int = Field(default=1, ge=1, le=100_000)
+    page: int = Field(default=1, ge=1, le=100)
     page_size: int = Field(default=25, ge=1, le=100)
 
 
@@ -377,7 +390,8 @@ class TaskPage(StrictSchema):
 class AssigneeRead(StrictSchema):
     membership_id: UUID
     display_name: str | None
-    email: EmailStr
+    status: str
+    role: str | None
 
 
 class CrmSummary(StrictSchema):

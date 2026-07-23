@@ -21,7 +21,7 @@ function value(input: string | string[] | undefined): string {
 
 function positivePage(input: string): number {
   const parsed = Number.parseInt(input, 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+  return Number.isFinite(parsed) && parsed > 0 ? Math.min(parsed, 100) : 1;
 }
 
 function pageHref(params: URLSearchParams, page: number): string {
@@ -73,13 +73,12 @@ export default async function CrmPage({ searchParams }: { searchParams: SearchPa
     crmGet<CrmSummary>("summary"),
     crmGet<LeadPage>(`leads?${query}`),
   ]);
-  const loadError = !summary || !leads;
   const metrics = [
-    ["Total prospects", summary?.total_leads ?? 0],
-    ["Nouveaux", summary?.new_leads ?? 0],
-    ["Qualifiés", summary?.qualified_leads ?? 0],
-    ["Gagnés", summary?.won_leads ?? 0],
-    ["Tâches en retard", summary?.overdue_tasks ?? 0],
+    ["Total prospects", summary.total_leads],
+    ["Nouveaux", summary.new_leads],
+    ["Qualifiés", summary.qualified_leads],
+    ["Gagnés", summary.won_leads],
+    ["Tâches en retard", summary.overdue_tasks],
   ];
 
   return (
@@ -104,7 +103,7 @@ export default async function CrmPage({ searchParams }: { searchParams: SearchPa
       <section aria-label="Indicateurs CRM" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         {metrics.map(([label, metric]) => (
           <article key={label} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">{label}</p>
+            <p className="text-xs font-semibold uppercase tracking-wider text-slate-600">{label}</p>
             <p className="mt-2 text-3xl font-bold text-slate-950">{metric}</p>
           </article>
         ))}
@@ -113,7 +112,7 @@ export default async function CrmPage({ searchParams }: { searchParams: SearchPa
       <section aria-labelledby="lead-list-title" className="rounded-3xl border border-slate-200 bg-white shadow-sm">
         <div className="border-b border-slate-100 p-5 sm:p-6">
           <h2 id="lead-list-title" className="text-lg font-bold text-slate-950">Pipeline</h2>
-          <p className="mt-1 text-sm text-slate-500">{leads?.total ?? 0} résultat(s)</p>
+          <p className="mt-1 text-sm text-slate-600">{leads.total} résultat(s)</p>
           <form method="get" className="mt-5 grid gap-3 lg:grid-cols-[minmax(0,1fr)_170px_150px_150px_auto]">
             <label className="grid gap-1.5 text-sm font-medium text-slate-700">
               <span className="sr-only">Rechercher</span>
@@ -153,20 +152,15 @@ export default async function CrmPage({ searchParams }: { searchParams: SearchPa
           </form>
         </div>
 
-        {loadError ? (
-          <div className="p-8 text-center" role="alert">
-            <h3 className="font-bold text-rose-800">Impossible de charger le CRM</h3>
-            <p className="mt-2 text-sm text-slate-600">Réessayez dans quelques instants.</p>
-          </div>
-        ) : leads.items.length === 0 ? (
+        {leads.items.length === 0 ? (
           <div className="p-10 text-center">
             <p className="text-lg font-bold text-slate-900">Aucun prospect trouvé</p>
-            <p className="mt-2 text-sm text-slate-500">Modifiez les filtres ou créez un prospect.</p>
+            <p className="mt-2 text-sm text-slate-600">Modifiez les filtres ou créez un prospect.</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="min-w-full border-collapse text-left text-sm">
-              <thead className="bg-slate-50 text-xs uppercase tracking-wider text-slate-500">
+              <thead className="bg-slate-50 text-xs uppercase tracking-wider text-slate-600">
                 <tr>
                   <th className="px-5 py-3 font-semibold sm:px-6" scope="col">Prospect</th>
                   <th className="px-4 py-3 font-semibold" scope="col">Statut</th>
@@ -181,7 +175,7 @@ export default async function CrmPage({ searchParams }: { searchParams: SearchPa
                   <tr key={lead.id} className="hover:bg-slate-50/70">
                     <td className="px-5 py-4 sm:px-6">
                       <p className="font-semibold text-slate-900">{[lead.contact_first_name, lead.contact_last_name].filter(Boolean).join(" ")}</p>
-                      <p className="mt-1 max-w-xs truncate text-xs text-slate-500">{lead.organization_name ?? lead.contact_email ?? lead.title}</p>
+                      <p className="mt-1 max-w-xs truncate text-xs text-slate-600">{lead.organization_name ?? lead.contact_email ?? lead.title}</p>
                     </td>
                     <td className="px-4 py-4"><StatusBadge status={lead.status} /></td>
                     <td className="px-4 py-4 font-medium text-slate-700">{priorityLabels[lead.priority]}</td>
@@ -199,11 +193,19 @@ export default async function CrmPage({ searchParams }: { searchParams: SearchPa
           </div>
         )}
 
-        {leads && leads.pages > 1 ? (
+        {leads.pages > 1 ? (
           <nav aria-label="Pagination des prospects" className="flex items-center justify-between border-t border-slate-100 px-5 py-4 sm:px-6">
-            <Link className={`secondary-button ${page <= 1 ? "pointer-events-none opacity-50" : ""}`} aria-disabled={page <= 1} href={pageHref(query, Math.max(1, page - 1))}>Précédent</Link>
-            <span className="text-sm text-slate-500">Page {page} sur {leads.pages}</span>
-            <Link className={`secondary-button ${page >= leads.pages ? "pointer-events-none opacity-50" : ""}`} aria-disabled={page >= leads.pages} href={pageHref(query, Math.min(leads.pages, page + 1))}>Suivant</Link>
+            {page <= 1 ? (
+              <span className="secondary-button opacity-50" aria-disabled="true">Précédent</span>
+            ) : (
+              <Link className="secondary-button" href={pageHref(query, page - 1)}>Précédent</Link>
+            )}
+            <span className="text-sm text-slate-600">Page {page} sur {leads.pages}</span>
+            {page >= leads.pages ? (
+              <span className="secondary-button opacity-50" aria-disabled="true">Suivant</span>
+            ) : (
+              <Link className="secondary-button" href={pageHref(query, page + 1)}>Suivant</Link>
+            )}
           </nav>
         ) : null}
       </section>

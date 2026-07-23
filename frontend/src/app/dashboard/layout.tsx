@@ -53,7 +53,7 @@ export default async function DashboardLayout({
 
         <div className="mt-auto rounded-2xl border border-slate-200 bg-slate-50 p-4">
           <div className="flex items-center justify-between gap-3">
-            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-600">
               Environnement
             </p>
             <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-700">
@@ -62,10 +62,10 @@ export default async function DashboardLayout({
             </span>
           </div>
           <p className="mt-3 text-sm font-semibold text-slate-800">{auth.company.name}</p>
-          <p className="mt-1 truncate text-xs text-slate-500">
+          <p className="mt-1 truncate text-xs text-slate-600">
             {auth.role?.name ?? "Accès sans rôle"}
           </p>
-          <p className="mt-1 truncate font-mono text-[11px] text-slate-400" title={auth.company.id}>
+          <p className="mt-1 truncate font-mono text-[11px] text-slate-600" title={auth.company.id}>
             {auth.company.id}
           </p>
         </div>
@@ -82,7 +82,7 @@ export default async function DashboardLayout({
               <p className="text-xs font-semibold uppercase tracking-[0.16em] text-teal-700">
                 Espace de pilotage
               </p>
-              <p className="mt-1 truncate text-sm text-slate-500">
+              <p className="mt-1 truncate text-sm text-slate-600">
                 Données de démonstration · mise à jour il y a 2 min
               </p>
             </div>

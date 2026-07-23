@@ -113,7 +113,8 @@ export type PageResult<T> = {
 export type Assignee = {
   membership_id: string;
   display_name: string | null;
-  email: string;
+  status: string;
+  role: string | null;
 };
 
 export const statusLabels: Record<LeadStatus, string> = {

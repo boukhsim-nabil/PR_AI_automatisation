@@ -4,6 +4,7 @@ import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { Assignee, CrmTask, LeadStatus, statusLabels } from "@/lib/crm";
+import { apiErrorFromResponse, userFacingApiError } from "@/lib/api-error";
 
 type Capabilities = {
   update: boolean;
@@ -11,6 +12,7 @@ type Capabilities = {
   addActivity: boolean;
   manageTasks: boolean;
 };
+type Notice = { kind: "success" | "error"; message: string };
 
 async function api(path: string, body?: object): Promise<Response> {
   return fetch(path, {
@@ -39,24 +41,29 @@ export function LeadActions({
 }) {
   const router = useRouter();
   const [pending, setPending] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  const [notice, setNotice] = useState<Notice | null>(null);
   const [status, setStatus] = useState<LeadStatus>(currentStatus);
 
-  async function run(key: string, request: () => Promise<Response>, success: string) {
-    if (pending) return;
+  async function run(
+    key: string,
+    request: () => Promise<Response>,
+    success: string,
+  ): Promise<boolean> {
+    if (pending) return false;
     setPending(key);
     setNotice(null);
     try {
       const response = await request();
       if (!response.ok) {
-        const payload = (await response.json().catch(() => ({}))) as { detail?: string };
-        setNotice(payload.detail ?? "L’action a échoué.");
-        return;
+        setNotice({ kind: "error", message: userFacingApiError(await apiErrorFromResponse(response)) });
+        return false;
       }
-      setNotice(success);
+      setNotice({ kind: "success", message: success });
       router.refresh();
+      return true;
     } catch {
-      setNotice("Le service CRM est indisponible.");
+      setNotice({ kind: "error", message: "Le service CRM est indisponible." });
+      return false;
     } finally {
       setPending(null);
     }
@@ -89,11 +96,11 @@ export function LeadActions({
     );
   }
 
-  function addNote(event: FormEvent<HTMLFormElement>) {
+  async function addNote(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = event.currentTarget;
     const data = new FormData(form);
-    void run(
+    const succeeded = await run(
       "note",
       () =>
         api(`/api/crm/leads/${leadId}/activities`, {
@@ -102,15 +109,16 @@ export function LeadActions({
           description: data.get("description") || null,
         }),
       "Note ajoutée.",
-    ).then(() => form.reset());
+    );
+    if (succeeded) form.reset();
   }
 
-  function addTask(event: FormEvent<HTMLFormElement>) {
+  async function addTask(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = event.currentTarget;
     const data = new FormData(form);
     const dueAt = String(data.get("due_at") || "");
-    void run(
+    const succeeded = await run(
       "task",
       () =>
         api("/api/crm/tasks", {
@@ -122,12 +130,21 @@ export function LeadActions({
           due_at: dueAt ? new Date(dueAt).toISOString() : null,
         }),
       "Tâche créée.",
-    ).then(() => form.reset());
+    );
+    if (succeeded) form.reset();
   }
 
   return (
     <div className="space-y-6">
-      <div aria-live="polite" className="min-h-6 text-sm font-semibold text-teal-800">{notice}</div>
+      <div
+        role={notice?.kind === "error" ? "alert" : "status"}
+        aria-live={notice?.kind === "error" ? "assertive" : "polite"}
+        className={`min-h-6 text-sm font-semibold ${
+          notice?.kind === "error" ? "text-rose-700" : "text-teal-800"
+        }`}
+      >
+        {notice?.message}
+      </div>
 
       {capabilities.update ? (
         <form onSubmit={changeStatus} className="rounded-2xl border border-slate-200 bg-white p-5">
@@ -163,7 +180,7 @@ export function LeadActions({
               <option value="">Non attribué</option>
               {assignees.map((assignee) => (
                 <option key={assignee.membership_id} value={assignee.membership_id}>
-                  {assignee.display_name ?? assignee.email}
+                  {assignee.display_name ?? assignee.role ?? "Membre actif"}
                 </option>
               ))}
             </select>
@@ -212,7 +229,7 @@ export function LeadActions({
             <select className="crm-input" name="assigned_membership_id" defaultValue="">
               <option value="">Non attribué</option>
               {assignees.map((assignee) => (
-                <option key={assignee.membership_id} value={assignee.membership_id}>{assignee.display_name ?? assignee.email}</option>
+                <option key={assignee.membership_id} value={assignee.membership_id}>{assignee.display_name ?? assignee.role ?? "Membre actif"}</option>
               ))}
             </select>
           </label>
@@ -222,11 +239,11 @@ export function LeadActions({
 
       <section className="rounded-2xl border border-slate-200 bg-white p-5" aria-labelledby="tasks-title">
         <h2 id="tasks-title" className="font-bold text-slate-950">Tâches</h2>
-        {tasks.length === 0 ? <p className="mt-3 text-sm text-slate-500">Aucune tâche.</p> : (
+        {tasks.length === 0 ? <p className="mt-3 text-sm text-slate-600">Aucune tâche.</p> : (
           <ul className="mt-3 divide-y divide-slate-100">
             {tasks.map((task) => (
               <li key={task.id} className="flex items-center justify-between gap-3 py-3">
-                <div><p className="text-sm font-semibold text-slate-800">{task.title}</p><p className="text-xs text-slate-500">{task.status}</p></div>
+                <div><p className="text-sm font-semibold text-slate-800">{task.title}</p><p className="text-xs text-slate-600">{task.status}</p></div>
                 {capabilities.manageTasks && task.status !== "completed" ? (
                   <button className="secondary-button px-3 py-2" disabled={pending !== null} type="button" onClick={() => void run(`complete-${task.id}`, () => api(`/api/crm/tasks/${task.id}/complete`), "Tâche terminée.")}>Terminer</button>
                 ) : null}

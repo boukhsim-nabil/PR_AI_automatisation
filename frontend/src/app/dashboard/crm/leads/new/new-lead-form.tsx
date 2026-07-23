@@ -3,16 +3,9 @@
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 
-type ErrorPayload = { detail?: string | Array<{ msg?: string }> };
-type CreatedContact = { id: string };
-type CreatedLead = { id: string };
+import { apiErrorFromResponse, userFacingApiError } from "@/lib/api-error";
 
-function message(payload: ErrorPayload, status: number): string {
-  if (status === 409) return "Un contact utilise déjà cet email dans votre entreprise.";
-  if (status === 403) return "Vous n’avez pas la permission de créer ce prospect.";
-  if (status === 422) return "Vérifiez les champs signalés puis réessayez.";
-  return typeof payload.detail === "string" ? payload.detail : "La création a échoué.";
-}
+type CreatedLeadWithContact = { contact: { id: string }; lead: { id: string } };
 
 export function NewLeadForm() {
   const router = useRouter();
@@ -27,58 +20,48 @@ export function NewLeadForm() {
     const form = new FormData(event.currentTarget);
 
     try {
-      const contactResponse = await fetch("/api/crm/contacts", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          first_name: form.get("first_name") || null,
-          last_name: form.get("last_name"),
-          email: form.get("email") || null,
-          phone: form.get("phone") || null,
-          job_title: form.get("job_title") || null,
-          organization_name: form.get("organization_name") || null,
-          language: form.get("language"),
-          consent_email: form.get("consent_email") === "on",
-          consent_whatsapp: form.get("consent_whatsapp") === "on",
-        }),
-      });
-      const contactPayload = (await contactResponse.json().catch(() => ({}))) as
-        | CreatedContact
-        | ErrorPayload;
-      if (!contactResponse.ok || !("id" in contactPayload)) {
-        setError(message(contactPayload as ErrorPayload, contactResponse.status));
-        return;
-      }
-
       const nextActionAt = String(form.get("next_action_at") || "");
       const budget = String(form.get("estimated_budget") || "").trim();
-      const leadResponse = await fetch("/api/crm/leads", {
+      const response = await fetch("/api/crm/leads/with-contact", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          contact_id: contactPayload.id,
-          title: form.get("title"),
-          need_description: form.get("need_description") || null,
-          estimated_budget: budget || null,
-          currency: form.get("currency"),
-          urgency: form.get("urgency"),
-          source: form.get("source"),
-          score: Number(form.get("score") || 0),
-          priority: form.get("priority"),
-          next_action: form.get("next_action") || null,
-          next_action_at: nextActionAt ? new Date(nextActionAt).toISOString() : null,
+          contact: {
+            first_name: form.get("first_name") || null,
+            last_name: form.get("last_name"),
+            email: form.get("email") || null,
+            phone: form.get("phone") || null,
+            job_title: form.get("job_title") || null,
+            organization_name: form.get("organization_name") || null,
+            language: form.get("language"),
+            consent_email: form.get("consent_email") === "on",
+            consent_whatsapp: form.get("consent_whatsapp") === "on",
+          },
+          lead: {
+            title: form.get("title"),
+            need_description: form.get("need_description") || null,
+            estimated_budget: budget || null,
+            currency: form.get("currency"),
+            urgency: form.get("urgency"),
+            source: form.get("source"),
+            score: Number(form.get("score") || 0),
+            priority: form.get("priority"),
+            next_action: form.get("next_action") || null,
+            next_action_at: nextActionAt ? new Date(nextActionAt).toISOString() : null,
+          },
         }),
       });
-      const leadPayload = (await leadResponse.json().catch(() => ({}))) as
-        | CreatedLead
-        | ErrorPayload;
-      if (!leadResponse.ok || !("id" in leadPayload)) {
+      if (!response.ok) {
+        const apiError = await apiErrorFromResponse(response);
         setError(
-          `${message(leadPayload as ErrorPayload, leadResponse.status)} Le contact a été conservé.`,
+          apiError.status === 409
+            ? "Un contact utilise déjà cet email dans votre entreprise."
+            : userFacingApiError(apiError),
         );
         return;
       }
-      router.push(`/dashboard/crm/leads/${leadPayload.id}`);
+      const created = (await response.json()) as CreatedLeadWithContact;
+      router.push(`/dashboard/crm/leads/${created.lead.id}`);
       router.refresh();
     } catch {
       setError("Le service CRM est indisponible. Réessayez dans quelques instants.");
@@ -182,7 +165,11 @@ export function NewLeadForm() {
         </label>
       </fieldset>
 
-      <div aria-live="assertive" className="min-h-6 text-sm font-medium text-rose-700">
+      <div
+        role={error ? "alert" : undefined}
+        aria-live="assertive"
+        className="min-h-6 text-sm font-medium text-rose-700"
+      >
         {error}
       </div>
       <button className="primary-button justify-center" type="submit" disabled={pending}>

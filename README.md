@@ -1,4 +1,21 @@
-# Plateforme d’Automatisation Intelligente
+# Plateforme d'Automatisation Intelligente
+
+## Prérequis Node.js
+
+Le frontend requiert Node.js `22.13.0` ou une version ultérieure de la branche 22.
+Depuis la racine, utilisez `nvm use` après installation de la version indiquée dans
+`.nvmrc`. La même version est déclarée dans `.node-version` et dans les `engines`
+du package frontend.
+
+### Alertes npm connues
+
+`npm audit` signale actuellement les avis PostCSS `GHSA-qx2v-qp2m-jg93` et
+`GHSA-6g55-p6wh-862q` dans la copie embarquée par Next.js 16.2.11. Au
+23 juillet 2026, 16.2.11 est la dernière version publiée et dépend encore de
+PostCSS 8.4.31 ; npm ne propose qu’un downgrade majeur vers Next.js 9.3.3, qui
+n’est pas compatible avec l’application. Le projet n’accepte ni CSS ni source
+map fourni par un utilisateur. Ces alertes restent suivies jusqu’à la publication
+d’une version compatible de Next.js.
 
 Monorepo composé de `backend` (FastAPI/PostgreSQL) et `frontend`
 (Next.js/Playwright). La CI GitHub Actions exécute les mêmes contrôles que les

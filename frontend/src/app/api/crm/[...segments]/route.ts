@@ -26,6 +26,9 @@ const QUERY_PARAMETERS = new Set([
 function isAllowedPath(segments: string[]): boolean {
   if (segments.length === 0 || !COLLECTIONS.has(segments[0])) return false;
   if (segments.length === 1) return true;
+  if (segments[0] === "leads" && segments[1] === "with-contact" && segments.length === 2) {
+    return true;
+  }
   if (!UUID_PATTERN.test(segments[1])) return false;
   return segments.length === 2 || (segments.length === 3 && ACTIONS.has(segments[2]));
 }
