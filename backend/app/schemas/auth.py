@@ -23,3 +23,34 @@ class AuthContextResponse(BaseModel):
     company_id: UUID
     membership_id: UUID
     role_id: UUID | None = None
+    session_id: UUID | None = None
+
+
+class CurrentUserInfo(BaseModel):
+    id: UUID
+    email: EmailStr
+    display_name: str | None
+
+
+class CurrentCompanyInfo(BaseModel):
+    id: UUID
+    name: str
+
+
+class CurrentMembershipInfo(BaseModel):
+    id: UUID
+    status: str
+
+
+class CurrentRoleInfo(BaseModel):
+    id: UUID
+    code: str
+    name: str
+
+
+class CurrentUserResponse(BaseModel):
+    user: CurrentUserInfo
+    company: CurrentCompanyInfo
+    membership: CurrentMembershipInfo
+    role: CurrentRoleInfo | None
+    permissions: list[str]

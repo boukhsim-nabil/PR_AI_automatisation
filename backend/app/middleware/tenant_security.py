@@ -7,7 +7,7 @@ from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from app.core.security import decode_access_token
-
+from app.services.audit import AuditEvent, AuditService
 
 PUBLIC_PATHS = frozenset(
     {
@@ -17,6 +17,9 @@ PUBLIC_PATHS = frozenset(
         "/docs/oauth2-redirect",
         "/redoc",
         "/v1/auth/login",
+        "/v1/auth/refresh",
+        "/v1/auth/logout",
+        "/v1/auth/logout-all",
     }
 )
 
@@ -27,6 +30,7 @@ class AuthContext:
     company_id: UUID
     membership_id: UUID
     role_id: UUID | None = None
+    session_id: UUID | None = None
 
 
 class TenantSecurityMiddleware:
@@ -79,6 +83,17 @@ class TenantSecurityMiddleware:
             except ValueError:
                 company_matches = False
             if not company_matches:
+                AuditService.record(
+                    scope,
+                    AuditEvent(
+                        company_id=auth_context.company_id,
+                        actor_user_id=auth_context.user_id,
+                        actor_membership_id=auth_context.membership_id,
+                        action="security.cross_tenant",
+                        result="denied",
+                        metadata={"requested_company_id": requested_company_id},
+                    ),
+                )
                 await self._reject(
                     scope,
                     receive,
@@ -99,11 +114,13 @@ class TenantSecurityMiddleware:
     @staticmethod
     def _build_auth_context(claims: dict[str, Any]) -> AuthContext:
         role_id = claims.get("role_id")
+        session_id = claims.get("session_id")
         return AuthContext(
             user_id=UUID(claims["sub"]),
             company_id=UUID(claims["company_id"]),
             membership_id=UUID(claims["membership_id"]),
             role_id=UUID(role_id) if role_id else None,
+            session_id=UUID(session_id) if session_id else None,
         )
 
     @staticmethod

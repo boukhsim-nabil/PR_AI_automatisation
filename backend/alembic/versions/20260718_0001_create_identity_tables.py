@@ -7,10 +7,10 @@ Create Date: 2026-07-18
 
 from collections.abc import Sequence
 
-from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
+from alembic import op
 
 revision: str = "20260718_0001"
 down_revision: str | None = None
@@ -30,9 +30,7 @@ def upgrade() -> None:
         sa.Column("name", sa.String(length=255), nullable=False),
         sa.Column("sector", sa.String(length=120), nullable=True),
         sa.Column("timezone", sa.String(length=64), server_default="UTC", nullable=False),
-        sa.Column(
-            "default_language", sa.String(length=10), server_default="fr", nullable=False
-        ),
+        sa.Column("default_language", sa.String(length=10), server_default="fr", nullable=False),
         sa.Column("status", sa.String(length=32), server_default="active", nullable=False),
         sa.Column("plan_id", postgresql.UUID(as_uuid=True), nullable=True),
         sa.Column(
@@ -118,20 +116,26 @@ def upgrade() -> None:
             nullable=False,
         ),
         sa.ForeignKeyConstraint(
-            ["company_id"], ["companies.id"], name=op.f("fk_memberships_company_id_companies"), ondelete="CASCADE"
+            ["company_id"],
+            ["companies.id"],
+            name=op.f("fk_memberships_company_id_companies"),
+            ondelete="CASCADE",
         ),
         sa.ForeignKeyConstraint(
-            ["invited_by"], ["users.id"], name=op.f("fk_memberships_invited_by_users"), ondelete="SET NULL"
+            ["invited_by"],
+            ["users.id"],
+            name=op.f("fk_memberships_invited_by_users"),
+            ondelete="SET NULL",
         ),
         sa.ForeignKeyConstraint(
             ["user_id"], ["users.id"], name=op.f("fk_memberships_user_id_users"), ondelete="CASCADE"
         ),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_memberships")),
-        sa.UniqueConstraint("company_id", "user_id", name=op.f("uq_memberships_company_id_user_id")),
+        sa.UniqueConstraint(
+            "company_id", "user_id", name=op.f("uq_memberships_company_id_user_id")
+        ),
     )
-    op.create_index(
-        "ix_memberships_company_id_status", "memberships", ["company_id", "status"]
-    )
+    op.create_index("ix_memberships_company_id_status", "memberships", ["company_id", "status"])
     op.create_index(op.f("ix_memberships_user_id"), "memberships", ["user_id"])
 
 

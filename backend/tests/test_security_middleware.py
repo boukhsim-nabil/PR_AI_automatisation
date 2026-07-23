@@ -1,13 +1,18 @@
 from uuid import uuid4
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app.core.security import create_access_token
 from app.main import create_app
 
+pytestmark = pytest.mark.unit
+
 
 def test_security_middleware_blocks_request_without_token() -> None:
-    client = TestClient(create_app())
+    application = create_app()
+    application.state.audit_enabled = False
+    client = TestClient(application)
 
     response = client.get("/v1/auth/context")
 
@@ -17,7 +22,9 @@ def test_security_middleware_blocks_request_without_token() -> None:
 
 
 def test_security_middleware_derives_tenant_from_token() -> None:
-    client = TestClient(create_app())
+    application = create_app()
+    application.state.audit_enabled = False
+    client = TestClient(application)
     user_id = uuid4()
     company_id = uuid4()
     membership_id = uuid4()
@@ -38,7 +45,9 @@ def test_security_middleware_derives_tenant_from_token() -> None:
 
 
 def test_security_middleware_blocks_cross_tenant_header() -> None:
-    client = TestClient(create_app())
+    application = create_app()
+    application.state.audit_enabled = False
+    client = TestClient(application)
     token, _ = create_access_token(
         user_id=uuid4(),
         company_id=uuid4(),

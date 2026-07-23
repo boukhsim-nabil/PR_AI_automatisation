@@ -1,0 +1,27 @@
+name: automation-tests
+
+services:
+  postgres_test:
+    image: postgres:15-alpine
+    container_name: automation-postgres-test
+    restart: "no"
+    environment:
+      POSTGRES_DB: automation_test
+      POSTGRES_USER: automation_test
+      POSTGRES_PASSWORD: automation_test_password
+    ports:
+      - "127.0.0.1:55432:5432"
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U automation_test -d automation_test"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+    networks:
+      - automation_test_network
+
+networks:
+  automation_test_network:
+    name: automation-test-network
+    driver: bridge

@@ -2,6 +2,8 @@
 .venv/
 __pycache__/
 .pytest_cache/
+.ruff_cache/
+.mypy_cache/
 *.py[cod]
 *.egg-info/
 
@@ -9,6 +11,7 @@ node_modules/
 .next/
 playwright-report/
 test-results/
+backend-e2e*.log
 
 .idea/
 .vscode/

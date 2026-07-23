@@ -8,9 +8,12 @@ from pwdlib import PasswordHash
 
 from app.core.config import settings
 
-
 password_hash = PasswordHash.recommended()
 DUMMY_PASSWORD_HASH = password_hash.hash("dummy-password-used-for-timing-safety")
+
+
+def hash_password(plain_password: str) -> str:
+    return password_hash.hash(plain_password)
 
 
 def verify_password(plain_password: str, hashed_password: str | None) -> bool:
@@ -27,6 +30,7 @@ def create_access_token(
     company_id: UUID,
     membership_id: UUID,
     role_id: UUID | None,
+    session_id: UUID | None = None,
 ) -> tuple[str, int]:
     now = datetime.now(UTC)
     expires_delta = timedelta(minutes=settings.jwt_access_token_expire_minutes)
@@ -44,6 +48,8 @@ def create_access_token(
     }
     if role_id is not None:
         payload["role_id"] = str(role_id)
+    if session_id is not None:
+        payload["session_id"] = str(session_id)
 
     token = jwt.encode(
         payload,

@@ -28,13 +28,13 @@ class User(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
-    memberships: Mapped[list["Membership"]] = relationship(
+    memberships: Mapped[list[Membership]] = relationship(
         back_populates="user",
         cascade="all, delete-orphan",
         passive_deletes=True,
         foreign_keys="Membership.user_id",
     )
-    invitations_sent: Mapped[list["Membership"]] = relationship(
+    invitations_sent: Mapped[list[Membership]] = relationship(
         back_populates="inviter",
         foreign_keys="Membership.invited_by",
     )
