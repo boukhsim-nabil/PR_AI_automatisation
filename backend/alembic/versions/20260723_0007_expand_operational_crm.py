@@ -193,6 +193,11 @@ def _upgrade_leads() -> None:
         WHERE NOT EXISTS (SELECT 1 FROM contacts WHERE contacts.id = mapping.contact_id)
         """
     )
+    op.drop_constraint(
+        op.f("ck_leads_priority_allowed"),
+        "leads",
+        type_="check",
+    )
     op.execute(
         """
         UPDATE leads AS lead
@@ -222,7 +227,6 @@ def _upgrade_leads() -> None:
         "fk_leads_created_by_users",
         "uq_leads_company_id_email_normalized",
         "ck_leads_budget_non_negative",
-        "ck_leads_priority_allowed",
         "ck_leads_score_range",
         "ck_leads_status_allowed",
         "ck_leads_urgency_allowed",
