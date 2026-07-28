@@ -42,7 +42,14 @@ export default async function CompanyDetails({ params }: { params: Promise<{ id:
         <h2 className="text-xl font-bold">Invitations Owner</h2>
         {invitations.length ? <ul className="mt-4 divide-y divide-slate-100">{invitations.map((item) => <li key={item.id} className="flex flex-wrap justify-between gap-3 py-3 text-sm"><span>{item.email}</span><span>{item.status} · expire le {new Date(item.expires_at).toLocaleDateString("fr-FR")}</span></li>)}</ul> : <p className="mt-3 text-slate-600">Aucune invitation.</p>}
       </section>
-      <CompanyActions companyId={company.id} suspended={company.status === "suspended"} />
+      <CompanyActions
+        companyId={company.id}
+        suspended={company.status === "suspended"}
+        company={company}
+        pendingInvitation={
+          invitations.find((invitation) => invitation.status === "pending") ?? null
+        }
+      />
     </>
   );
 }
