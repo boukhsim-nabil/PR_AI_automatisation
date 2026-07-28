@@ -1,5 +1,6 @@
 import { defineConfig, devices } from "@playwright/test";
 
+const baseURL = process.env.E2E_BASE_URL ?? "http://localhost:3000";
 
 export default defineConfig({
   testDir: "./tests",
@@ -9,7 +10,7 @@ export default defineConfig({
   workers: 1,
   reporter: [["list"], ["html", { open: "never" }]],
   use: {
-    baseURL: "http://localhost:3000",
+    baseURL,
     trace: "on-first-retry",
     screenshot: "only-on-failure",
     video: "retain-on-failure",
@@ -21,8 +22,8 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: "npm run dev",
-    url: "http://localhost:3000/login",
+    command: process.env.E2E_FRONTEND_COMMAND ?? "npm run dev",
+    url: `${baseURL}/login`,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
   },

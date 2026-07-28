@@ -9,11 +9,16 @@ __pycache__/
 
 node_modules/
 .next/
+.next-e2e/
 playwright-report/
 test-results/
 backend-e2e*.log
+.local/
 
 .idea/
 .vscode/
 .DS_Store
 Thumbs.db
+
+backups/*
+!backups/.gitkeep

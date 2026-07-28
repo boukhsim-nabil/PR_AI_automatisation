@@ -5,7 +5,15 @@ from uuid import UUID
 from sqlalchemy import select
 
 from app.core.security import hash_password
-from app.db.models import Company, Contact, Lead, Membership, User
+from app.db.models import (
+    Company,
+    Contact,
+    Lead,
+    Membership,
+    PlatformRole,
+    PlatformUserRole,
+    User,
+)
 from app.db.seeds import seed_rbac
 from app.db.session import SessionLocal
 
@@ -16,6 +24,10 @@ E2E_EMAIL = "e2e-user@example.com"
 E2E_VIEWER_ID = UUID("33333333-3333-4333-8333-333333333333")
 E2E_VIEWER_MEMBERSHIP_ID = UUID("34343434-3434-4343-8343-343434343434")
 E2E_VIEWER_EMAIL = "e2e-viewer@example.com"
+E2E_SALES_ID = UUID("abababab-abab-4bab-8bab-abababababab")
+E2E_SALES_MEMBERSHIP_ID = UUID("acacacac-acac-4cac-8cac-acacacacacac")
+E2E_SALES_EMAIL = "e2e-sales@example.com"
+E2E_SALES_PASSWORD = "Local-Only-Sales-Password-42!"
 E2E_CONTACT_ID = UUID("77777777-7777-4777-8777-777777777777")
 E2E_LEAD_ID = UUID("88888888-8888-4888-8888-888888888888")
 
@@ -24,6 +36,8 @@ E2E_FOREIGN_USER_ID = UUID("55555555-5555-4555-8555-555555555555")
 E2E_FOREIGN_MEMBERSHIP_ID = UUID("45454545-4545-4454-8454-454545454545")
 E2E_FOREIGN_CONTACT_ID = UUID("99999999-9999-4999-8999-999999999999")
 E2E_FOREIGN_LEAD_ID = UUID("66666666-6666-4666-8666-666666666666")
+E2E_PLATFORM_ADMIN_ID = UUID("aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa")
+E2E_PLATFORM_ADMIN_EMAIL = "e2e-platform-admin@example.com"
 
 
 def _required_password(name: str) -> str:
@@ -36,9 +50,41 @@ def _required_password(name: str) -> str:
 def seed() -> None:
     password = _required_password("E2E_PASSWORD")
     viewer_password = _required_password("E2E_VIEWER_PASSWORD")
+    platform_password = _required_password("E2E_PLATFORM_ADMIN_PASSWORD")
 
     with SessionLocal.begin() as session:
         roles = seed_rbac(session)
+        platform_role = session.scalar(
+            select(PlatformRole).where(PlatformRole.code == "platform_super_admin")
+        )
+        if platform_role is None:
+            raise RuntimeError("Run Alembic migrations before the E2E seed")
+        platform_admin = session.get(User, E2E_PLATFORM_ADMIN_ID)
+        if platform_admin is None:
+            platform_admin = User(
+                id=E2E_PLATFORM_ADMIN_ID,
+                email=E2E_PLATFORM_ADMIN_EMAIL,
+                display_name="E2E Platform Admin",
+                status="active",
+            )
+            session.add(platform_admin)
+        platform_admin.password_hash = hash_password(platform_password)
+        platform_admin.status = "active"
+        session.flush()
+        assignment = session.get(
+            PlatformUserRole,
+            {
+                "user_id": platform_admin.id,
+                "platform_role_id": platform_role.id,
+            },
+        )
+        if assignment is None:
+            session.add(
+                PlatformUserRole(
+                    user_id=platform_admin.id,
+                    platform_role_id=platform_role.id,
+                )
+            )
         company = session.get(Company, E2E_COMPANY_ID)
         if company is None:
             company = Company(id=E2E_COMPANY_ID, name="E2E Synthetic Tenant", status="active")
@@ -98,6 +144,36 @@ def seed() -> None:
             session.add(viewer_membership)
         viewer_membership.status = "active"
         viewer_membership.role_id = roles["viewer"].id
+        session.flush()
+
+        sales = session.get(User, E2E_SALES_ID)
+        if sales is None:
+            sales = User(
+                id=E2E_SALES_ID,
+                email=E2E_SALES_EMAIL,
+                display_name="E2E Sales",
+                status="active",
+            )
+            session.add(sales)
+        sales.password_hash = hash_password(E2E_SALES_PASSWORD)
+        sales.status = "active"
+        session.flush()
+        sales_membership = session.scalar(
+            select(Membership).where(
+                Membership.company_id == company.id,
+                Membership.user_id == sales.id,
+            )
+        )
+        if sales_membership is None:
+            sales_membership = Membership(
+                id=E2E_SALES_MEMBERSHIP_ID,
+                company_id=company.id,
+                user_id=sales.id,
+                joined_at=datetime.now(UTC),
+            )
+            session.add(sales_membership)
+        sales_membership.status = "active"
+        sales_membership.role_id = roles["sales"].id
         session.flush()
 
         contact = session.get(Contact, E2E_CONTACT_ID)
@@ -187,7 +263,11 @@ def seed() -> None:
             )
             session.add(foreign_lead)
 
-    print(f"E2E seed ready for company {E2E_COMPANY_ID} and user {E2E_EMAIL}.")
+    print(
+        f"E2E seed ready for companies {E2E_COMPANY_ID} / "
+        f"{E2E_FOREIGN_COMPANY_ID} and users {E2E_EMAIL}, "
+        f"{E2E_SALES_EMAIL}, {E2E_VIEWER_EMAIL}."
+    )
 
 
 if __name__ == "__main__":
