@@ -8,8 +8,10 @@ from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import Engine, select, text
+from sqlalchemy.exc import ProgrammingError
 from sqlalchemy.orm import Session
 
+import app.api.routes.platform as platform_routes
 from app.core.security import hash_password
 from app.core.sessions import token_hash
 from app.db.models import (
@@ -311,3 +313,98 @@ def test_expired_and_revoked_invitations_are_refused(
             json={"token": raw_token, "password": "Invitation-Invalid!2xR9"},
         )
         assert response.status_code == 410
+
+
+def test_existing_user_is_attached_without_duplicate(
+    integration_client: TestClient,
+    migrated_engine: Engine,
+    platform_admin: dict[str, str],
+    integration_identity,
+) -> None:
+    headers = _platform_headers(integration_client, platform_admin)
+    created = integration_client.post(
+        "/v1/platform/companies",
+        headers=headers,
+        json=_company_payload(integration_identity.email),
+    )
+    assert created.status_code == 201, created.text
+    body = created.json()
+    invitation_id = body["invitation"]["id"]
+    email_file = Path(__file__).resolve().parents[3] / ".local" / "emails" / f"{invitation_id}.json"
+    raw_token = json.loads(email_file.read_text(encoding="utf-8"))["accept_url"].split("token=", 1)[
+        1
+    ]
+    accepted = integration_client.post(
+        "/v1/invitations/accept",
+        json={"token": raw_token, "password": integration_identity.password},
+    )
+    assert accepted.status_code == 200, accepted.text
+
+    with migrated_engine.begin() as connection:
+        connection.execute(text("SET LOCAL ROLE automation_migrator"))
+        assert (
+            connection.scalar(
+                text("SELECT count(*) FROM users WHERE email = :email"),
+                {"email": integration_identity.email},
+            )
+            == 1
+        )
+        assert (
+            connection.scalar(
+                text(
+                    """
+                SELECT roles.code
+                FROM memberships
+                JOIN roles ON roles.id = memberships.role_id
+                JOIN users ON users.id = memberships.user_id
+                WHERE memberships.company_id = :company_id AND users.email = :email
+                """
+                ),
+                {"company_id": body["company"]["id"], "email": integration_identity.email},
+            )
+            == "owner"
+        )
+    email_file.unlink(missing_ok=True)
+
+
+def test_company_creation_rolls_back_when_invitation_fails(
+    integration_client: TestClient,
+    migrated_engine: Engine,
+    platform_admin: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    headers = _platform_headers(integration_client, platform_admin)
+    name = f"Rollback Company {uuid4().hex[:8]}"
+
+    def fail_invitation(*args: object, **kwargs: object) -> None:
+        raise RuntimeError("synthetic invitation failure")
+
+    monkeypatch.setattr(platform_routes, "create_owner_invitation", fail_invitation)
+    with pytest.raises(RuntimeError, match="synthetic invitation failure"):
+        integration_client.post(
+            "/v1/platform/companies",
+            headers=headers,
+            json={**_company_payload(f"rollback-{uuid4().hex[:8]}@example.com"), "name": name},
+        )
+    with migrated_engine.begin() as connection:
+        connection.execute(text("SET LOCAL ROLE automation_migrator"))
+        assert (
+            connection.scalar(
+                text("SELECT count(*) FROM companies WHERE name = :name"), {"name": name}
+            )
+            == 0
+        )
+
+
+def test_platform_database_role_cannot_read_tenant_business_data(
+    migrated_engine: Engine,
+    platform_admin: dict[str, str],
+) -> None:
+    with pytest.raises(ProgrammingError, match="permission denied"):
+        with migrated_engine.begin() as connection:
+            connection.execute(text("SET LOCAL ROLE automation_platform_app"))
+            connection.execute(
+                text("SELECT set_config('app.current_platform_user_id', :user_id, true)"),
+                {"user_id": platform_admin["user_id"]},
+            )
+            connection.execute(text("SELECT * FROM contacts LIMIT 1"))
