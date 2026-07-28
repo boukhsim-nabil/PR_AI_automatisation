@@ -5,7 +5,12 @@ from fastapi import Request
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.db.tenant import enforce_application_role, set_current_company
+from app.db.tenant import (
+    enforce_application_role,
+    enforce_platform_role,
+    set_current_company,
+    set_current_platform_user,
+)
 
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
@@ -24,7 +29,14 @@ def get_db(request: Request) -> Iterator[Session]:
     session = SessionLocal()
     try:
         with session.begin():
-            enforce_application_role(session)
+            platform_context = getattr(request.state, "platform_auth_context", None)
+            platform_request = request.url.path.startswith(("/v1/platform", "/v1/invitations"))
+            if platform_context is not None or platform_request:
+                enforce_platform_role(session)
+                if platform_context is not None:
+                    set_current_platform_user(session, platform_context.user_id)
+            else:
+                enforce_application_role(session)
             auth_context = getattr(request.state, "auth_context", None)
             if auth_context is not None:
                 set_current_company(session, auth_context.company_id)

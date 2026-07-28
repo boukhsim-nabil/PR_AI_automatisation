@@ -6,6 +6,13 @@ from app.db.models.crm_activity import CrmActivity
 from app.db.models.crm_task import CrmTask
 from app.db.models.membership import Membership
 from app.db.models.permission import Permission
+from app.db.models.platform import (
+    CompanyInvitation,
+    PlatformAuditLog,
+    PlatformRole,
+    PlatformSession,
+    PlatformUserRole,
+)
 from app.db.models.refresh_token import RefreshToken
 from app.db.models.role import Role
 from app.db.models.role_permission import RolePermission
@@ -21,6 +28,11 @@ __all__ = [
     "Lead",
     "Membership",
     "Permission",
+    "CompanyInvitation",
+    "PlatformAuditLog",
+    "PlatformRole",
+    "PlatformSession",
+    "PlatformUserRole",
     "RefreshToken",
     "Role",
     "RolePermission",

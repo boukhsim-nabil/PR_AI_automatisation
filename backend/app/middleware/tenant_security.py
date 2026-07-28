@@ -6,7 +6,7 @@ from starlette.datastructures import Headers
 from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
 
-from app.core.security import decode_access_token
+from app.core.security import decode_access_token, decode_platform_access_token
 from app.services.audit import AuditEvent, AuditService
 
 PUBLIC_PATHS = frozenset(
@@ -20,6 +20,9 @@ PUBLIC_PATHS = frozenset(
         "/v1/auth/refresh",
         "/v1/auth/logout",
         "/v1/auth/logout-all",
+        "/v1/platform-auth/login",
+        "/v1/invitations/validate",
+        "/v1/invitations/accept",
     }
 )
 
@@ -31,6 +34,13 @@ class AuthContext:
     membership_id: UUID
     role_id: UUID | None = None
     session_id: UUID | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class PlatformAuthContext:
+    user_id: UUID
+    session_id: UUID
+    platform_role: str
 
 
 class TenantSecurityMiddleware:
@@ -62,7 +72,18 @@ class TenantSecurityMiddleware:
             )
             return
 
+        platform_path = path.startswith("/v1/platform") or path.startswith("/v1/platform-auth")
         try:
+            if platform_path:
+                claims = decode_platform_access_token(token)
+                platform_context = PlatformAuthContext(
+                    user_id=UUID(claims["sub"]),
+                    session_id=UUID(claims["session_id"]),
+                    platform_role=claims["platform_role"],
+                )
+                scope.setdefault("state", {})["platform_auth_context"] = platform_context
+                await self.app(scope, receive, send)
+                return
             claims = decode_access_token(token)
             auth_context = self._build_auth_context(claims)
         except (AttributeError, KeyError, TypeError, ValueError):

@@ -60,6 +60,17 @@ def create_access_token(
 
 
 def decode_access_token(token: str) -> dict[str, Any]:
+    payload = _decode_token(token)
+    if (
+        payload.get("type") != "access"
+        or not payload.get("company_id")
+        or not payload.get("membership_id")
+    ):
+        raise ValueError("Invalid token type")
+    return payload
+
+
+def _decode_token(token: str) -> dict[str, Any]:
     try:
         payload = jwt.decode(
             token,
@@ -70,8 +81,6 @@ def decode_access_token(token: str) -> dict[str, Any]:
             options={
                 "require": [
                     "sub",
-                    "company_id",
-                    "membership_id",
                     "type",
                     "iat",
                     "nbf",
@@ -84,6 +93,38 @@ def decode_access_token(token: str) -> dict[str, Any]:
     except InvalidTokenError as exc:
         raise ValueError("Invalid access token") from exc
 
-    if payload.get("type") != "access":
-        raise ValueError("Invalid token type")
+    return payload
+
+
+def create_platform_access_token(
+    *, user_id: UUID, session_id: UUID, platform_role: str
+) -> tuple[str, int]:
+    now = datetime.now(UTC)
+    expires_delta = timedelta(minutes=min(settings.jwt_access_token_expire_minutes, 10))
+    payload: dict[str, Any] = {
+        "sub": str(user_id),
+        "session_id": str(session_id),
+        "platform_role": platform_role,
+        "type": "platform_access",
+        "jti": str(uuid4()),
+        "iat": now,
+        "nbf": now,
+        "exp": now + expires_delta,
+        "iss": settings.jwt_issuer,
+        "aud": settings.jwt_audience,
+    }
+    return (
+        jwt.encode(payload, settings.jwt_secret_key, algorithm=settings.jwt_algorithm),
+        int(expires_delta.total_seconds()),
+    )
+
+
+def decode_platform_access_token(token: str) -> dict[str, Any]:
+    payload = _decode_token(token)
+    if (
+        payload.get("type") != "platform_access"
+        or payload.get("platform_role") != "platform_super_admin"
+        or not payload.get("session_id")
+    ):
+        raise ValueError("Invalid platform token")
     return payload

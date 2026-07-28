@@ -29,7 +29,7 @@ def seed() -> None:
                 name=COMPANY_NAME,
                 sector="Technology",
                 timezone="Africa/Casablanca",
-                default_language="fr",
+                language="fr",
                 status="active",
             )
             session.add(company)

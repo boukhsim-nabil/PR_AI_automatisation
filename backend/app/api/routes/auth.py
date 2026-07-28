@@ -63,7 +63,7 @@ def login(
             User.status == "active",
             Membership.company_id == payload.company_id,
             Membership.status == "active",
-            Company.status == "active",
+            Company.status.in_(("active", "onboarding")),
         )
     )
     result = db.execute(statement).one_or_none()
