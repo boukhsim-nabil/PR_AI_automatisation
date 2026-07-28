@@ -9,6 +9,13 @@ du package frontend.
 
 ### Alertes npm connues
 
+Mise à jour du 28 juillet 2026 : Next.js est en 16.2.12. `npm audit` signale
+11 vulnérabilités transitoires (1 modérée, 10 hautes) dans PostCSS et dans les
+outils de glob utilisés par ESLint. npm ne propose que des changements majeurs
+incompatibles pour ce reliquat. Ne pas lancer `npm audit fix --force`; suivre
+les mises à jour patch compatibles. Cette note remplace l'état historique
+ci-dessous.
+
 `npm audit` signale actuellement les avis PostCSS `GHSA-qx2v-qp2m-jg93` et
 `GHSA-6g55-p6wh-862q` dans la copie embarquée par Next.js 16.2.11. Au
 23 juillet 2026, 16.2.11 est la dernière version publiée et dépend encore de
@@ -126,6 +133,24 @@ Set-Location .\frontend
 npx.cmd playwright install chromium
 npm.cmd run test:e2e
 ```
+
+## Super-administration plateforme
+
+Appliquer les migrations puis créer le premier administrateur depuis `backend`.
+Le mot de passe est saisi de façon masquée et n'est jamais passé sur la ligne de
+commande :
+
+```powershell
+Set-Location .\backend
+.\.venv\Scripts\python.exe -m alembic upgrade head
+.\.venv\Scripts\python.exe -m scripts.bootstrap_platform_admin --email admin-plateforme@votre-domaine.com
+Set-Location ..
+```
+
+Le portail est disponible sur `/admin/login`. La création des clients doit ensuite
+passer par `/admin/companies/new`, jamais par des modifications SQL manuelles.
+Voir `docs/platform/super-admin.md`, `docs/platform/company-provisioning.md` et
+`docs/security/platform-vs-tenant.md`.
 
 ## Politique de secrets
 

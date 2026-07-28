@@ -1,0 +1,21 @@
+# Séparation plateforme et tenant
+
+| Domaine | Identité | Rôle PostgreSQL | Accès |
+|---|---|---|---|
+| Tenant | JWT avec `company_id` et `membership_id` | `automation_app` | tables du tenant via `SET LOCAL app.current_company_id` et RLS |
+| Plateforme | JWT `platform_access` et `PlatformSession` | `automation_platform_app` | companies et tables plateforme uniquement |
+| Migration | opérateur de déploiement | `automation_migrator` | DDL, `BYPASSRLS`, jamais utilisé par l'API |
+
+`automation_platform_app` est `NOLOGIN`, `NOINHERIT` et `NOBYPASSRLS`. Il ne reçoit
+aucun `SELECT` sur contacts, leads, tâches, activités, Inbox ou audit tenant. Le résumé
+d'usage n'accorde aucun accès brut aux données CRM.
+
+`company_invitations` et `platform_audit_logs` forcent RLS. Le contexte
+`app.current_platform_user_id` est transactionnel. L'acceptation publique utilise
+seulement le hash du token dans `app.current_invitation_token_hash`. Les fonctions
+`SECURITY DEFINER` sont limitées à la révocation de sessions, la création d'un User
+invité, l'acceptation Owner et l'écriture append-only d'audit.
+
+Un rôle tenant ne peut pas présenter son JWT au portail. Inversement, un token plateforme
+ne contient aucun tenant et est refusé par les routes métier. Il n'existe ni impersonation
+ni ouverture des prospects d'un client.
