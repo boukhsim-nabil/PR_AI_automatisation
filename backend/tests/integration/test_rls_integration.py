@@ -148,9 +148,11 @@ def test_all_company_scoped_tables_force_rls(migrated_engine: Engine) -> None:
         ("auth_sessions", True, True, "automation_migrator"),
         ("company_invitations", True, True, "automation_migrator"),
         ("contacts", True, True, "automation_migrator"),
+        ("conversations", True, True, "automation_migrator"),
         ("crm_activities", True, True, "automation_migrator"),
         ("crm_tasks", True, True, "automation_migrator"),
         ("leads", True, True, "automation_migrator"),
         ("memberships", True, True, "automation_migrator"),
+        ("messages", True, True, "automation_migrator"),
         ("platform_audit_logs", True, True, "automation_migrator"),
     ]

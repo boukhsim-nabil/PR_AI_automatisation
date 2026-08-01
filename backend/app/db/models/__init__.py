@@ -4,6 +4,17 @@ from app.db.models.company import Company
 from app.db.models.contact import Contact, Lead
 from app.db.models.crm_activity import CrmActivity
 from app.db.models.crm_task import CrmTask
+from app.db.models.inbox import (
+    Conversation,
+    ConversationChannel,
+    ConversationPriority,
+    ConversationStatus,
+    Message,
+    MessageContentType,
+    MessageDirection,
+    MessageSenderType,
+    MessageStatus,
+)
 from app.db.models.membership import Membership
 from app.db.models.permission import Permission
 from app.db.models.platform import (
@@ -26,6 +37,15 @@ __all__ = [
     "CrmActivity",
     "CrmTask",
     "Lead",
+    "Conversation",
+    "ConversationChannel",
+    "ConversationPriority",
+    "ConversationStatus",
+    "Message",
+    "MessageContentType",
+    "MessageDirection",
+    "MessageSenderType",
+    "MessageStatus",
     "Membership",
     "Permission",
     "CompanyInvitation",
