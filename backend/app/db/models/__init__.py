@@ -15,6 +15,15 @@ from app.db.models.inbox import (
     MessageSenderType,
     MessageStatus,
 )
+from app.db.models.inbox_metadata import (
+    AttachmentScanStatus,
+    ConversationNote,
+    ConversationParticipant,
+    ConversationParticipantType,
+    ConversationTag,
+    ConversationTagLink,
+    MessageAttachment,
+)
 from app.db.models.membership import Membership
 from app.db.models.permission import Permission
 from app.db.models.platform import (
@@ -46,6 +55,13 @@ __all__ = [
     "MessageDirection",
     "MessageSenderType",
     "MessageStatus",
+    "AttachmentScanStatus",
+    "ConversationNote",
+    "ConversationParticipant",
+    "ConversationParticipantType",
+    "ConversationTag",
+    "ConversationTagLink",
+    "MessageAttachment",
     "Membership",
     "Permission",
     "CompanyInvitation",

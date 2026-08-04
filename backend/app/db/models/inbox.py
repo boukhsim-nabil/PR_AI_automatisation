@@ -195,6 +195,7 @@ class Conversation(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 class Message(UUIDPrimaryKeyMixin, Base):
     __tablename__ = "messages"
     __table_args__ = (
+        UniqueConstraint("company_id", "id"),
         UniqueConstraint("company_id", "conversation_id", "id"),
         ForeignKeyConstraint(
             ["company_id", "conversation_id"],

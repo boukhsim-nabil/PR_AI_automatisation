@@ -30,6 +30,16 @@ PERMISSION_DEFINITIONS = {
     "workflows.read": "Consulter les workflows.",
     "workflows.manage": "Créer et modifier les workflows.",
     "audit.read": "Consulter le journal d’audit.",
+    "inbox.read": "Consulter les conversations et messages de l’Inbox.",
+    "inbox.create": "Créer des conversations dans l’Inbox.",
+    "inbox.reply": "Répondre aux conversations de l’Inbox.",
+    "inbox.assign": "Attribuer les conversations de l’Inbox.",
+    "inbox.update_status": "Modifier le statut des conversations de l’Inbox.",
+    "inbox.manage_priority": "Modifier la priorité des conversations de l’Inbox.",
+    "inbox.notes.create": "Créer des notes internes dans l’Inbox.",
+    "inbox.tags.manage": "Créer et associer des tags de l’Inbox.",
+    "inbox.archive": "Archiver des conversations de l’Inbox.",
+    "inbox.takeover": "Prendre le contrôle humain d’une conversation.",
 }
 
 ALL_PERMISSIONS = frozenset(PERMISSION_DEFINITIONS)
@@ -51,6 +61,16 @@ ROLE_PERMISSION_CODES = {
             "workflows.read",
             "workflows.manage",
             "audit.read",
+            "inbox.read",
+            "inbox.create",
+            "inbox.reply",
+            "inbox.assign",
+            "inbox.update_status",
+            "inbox.manage_priority",
+            "inbox.notes.create",
+            "inbox.tags.manage",
+            "inbox.archive",
+            "inbox.takeover",
         }
     ),
     "sales": frozenset(
@@ -65,6 +85,9 @@ ROLE_PERMISSION_CODES = {
             "crm.activities.create",
             "crm.tasks.manage",
             "workflows.read",
+            "inbox.read",
+            "inbox.reply",
+            "inbox.notes.create",
         }
     ),
     "support": frozenset(
@@ -76,9 +99,17 @@ ROLE_PERMISSION_CODES = {
             "crm.activities.create",
             "crm.tasks.manage",
             "workflows.read",
+            "inbox.read",
+            "inbox.reply",
+            "inbox.assign",
+            "inbox.update_status",
+            "inbox.notes.create",
+            "inbox.takeover",
         }
     ),
-    "viewer": frozenset({"company.read", "members.read", "crm.read", "workflows.read"}),
+    "viewer": frozenset(
+        {"company.read", "members.read", "crm.read", "workflows.read", "inbox.read"}
+    ),
 }
 
 
