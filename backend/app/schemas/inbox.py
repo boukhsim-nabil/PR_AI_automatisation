@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from enum import StrEnum
 from typing import Annotated, Self
 from uuid import UUID
 
@@ -52,18 +53,84 @@ class ConversationCreate(StrictInboxSchema):
     contact_id: UUID | None = None
     lead_id: UUID | None = None
     channel: ConversationChannel = ConversationChannel.INTERNAL
-    external_conversation_id: Identifier | None = None
     subject: ShortText | None = None
     priority: ConversationPriority = ConversationPriority.NORMAL
     assigned_membership_id: UUID | None = None
-    human_takeover: bool = False
 
 
 class ConversationUpdate(NonEmptyUpdate):
     subject: ShortText | None = None
+
+
+class ConversationAssign(StrictInboxSchema):
+    assigned_membership_id: UUID | None
+
+
+class ConversationStatusChange(StrictInboxSchema):
+    status: ConversationStatus
+
+
+class ConversationPriorityChange(StrictInboxSchema):
+    priority: ConversationPriority
+
+
+class ConversationSortField(StrEnum):
+    LAST_MESSAGE_AT = "last_message_at"
+    CREATED_AT = "created_at"
+
+
+class SortDirection(StrEnum):
+    ASC = "asc"
+    DESC = "desc"
+
+
+class ConversationFilters(StrictInboxSchema):
+    search: (
+        Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)]
+        | None
+    ) = None
+    channel: ConversationChannel | None = None
+    status: ConversationStatus | None = None
     priority: ConversationPriority | None = None
     assigned_membership_id: UUID | None = None
+    contact_id: UUID | None = None
+    lead_id: UUID | None = None
     human_takeover: bool | None = None
+    unread_only: bool = False
+    created_from: datetime | None = None
+    created_to: datetime | None = None
+    sort_by: ConversationSortField = ConversationSortField.LAST_MESSAGE_AT
+    sort_direction: SortDirection = SortDirection.DESC
+    cursor: Annotated[str, StringConstraints(min_length=1, max_length=1000)] | None = None
+    page_size: int = Field(default=25, ge=1, le=100)
+
+    @model_validator(mode="after")
+    def validate_period(self) -> Self:
+        if self.created_from and self.created_to and self.created_from > self.created_to:
+            raise ValueError("created_from must be before created_to")
+        return self
+
+
+class ContactSummary(InboxReadSchema):
+    id: UUID
+    first_name: str | None
+    last_name: str
+    email: EmailStr | None
+    phone: str | None
+    organization_name: str | None
+
+
+class LeadSummary(InboxReadSchema):
+    id: UUID
+    title: str
+    status: str
+    priority: str
+
+
+class AssignedMemberSummary(InboxReadSchema):
+    membership_id: UUID
+    display_name: str | None
+    email: EmailStr
 
 
 class ConversationListItem(InboxReadSchema):
@@ -80,6 +147,9 @@ class ConversationListItem(InboxReadSchema):
     last_message_at: datetime | None
     created_at: datetime
     updated_at: datetime
+    assigned_member: AssignedMemberSummary | None = None
+    contact: ContactSummary | None = None
+    lead: LeadSummary | None = None
 
 
 class ConversationRead(ConversationListItem):
@@ -89,6 +159,39 @@ class ConversationRead(ConversationListItem):
     resolved_at: datetime | None
     closed_at: datetime | None
     archived_at: datetime | None
+
+
+class ParticipantSummary(InboxReadSchema):
+    id: UUID
+    participant_type: ConversationParticipantType
+    display_name: str | None
+    email: EmailStr | None
+    phone: str | None
+
+
+class MessageSummary(InboxReadSchema):
+    id: UUID
+    direction: MessageDirection
+    sender_type: MessageSenderType
+    content_type: MessageContentType
+    body_preview: str | None
+    status: MessageStatus
+    created_at: datetime
+
+
+class ConversationDetail(ConversationRead):
+    participants: list[ParticipantSummary]
+    tags: list[TagRead]
+    message_count: int = Field(ge=0)
+    last_message: MessageSummary | None
+    applicable_permissions: list[str]
+
+
+class ConversationPage(StrictInboxSchema):
+    items: list[ConversationListItem]
+    next_cursor: str | None
+    has_more: bool
+    page_size: int = Field(ge=1, le=100)
 
 
 class MessageDraftCreate(StrictInboxSchema):
