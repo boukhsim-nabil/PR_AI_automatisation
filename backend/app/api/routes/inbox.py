@@ -116,7 +116,9 @@ def _audit(
 def _hidden_resource(
     request: Request,
     access: MembershipAuthorization,
-    conversation_id: UUID,
+    resource_id: UUID,
+    *,
+    resource_type: str = "conversation",
 ) -> None:
     AuditService.record(
         request.scope,
@@ -126,8 +128,8 @@ def _hidden_resource(
             actor_membership_id=access.membership.id,
             action="security.cross_tenant",
             result="denied",
-            resource_type="conversation",
-            resource_id=str(conversation_id),
+            resource_type=resource_type,
+            resource_id=str(resource_id),
             metadata={"reason": "resource_not_visible"},
         ),
     )
@@ -278,6 +280,12 @@ def create_conversation(
             )
         )
         if contact is None:
+            _hidden_resource(
+                request,
+                access,
+                payload.contact_id,
+                resource_type="contact",
+            )
             raise HTTPException(status_code=422, detail="Invalid contact")
 
     lead = None
@@ -290,6 +298,12 @@ def create_conversation(
             )
         )
         if lead is None:
+            _hidden_resource(
+                request,
+                access,
+                payload.lead_id,
+                resource_type="lead",
+            )
             raise HTTPException(status_code=422, detail="Invalid lead")
         if contact_id is not None and lead.contact_id != contact_id:
             raise HTTPException(status_code=422, detail="Lead and contact are inconsistent")
@@ -309,6 +323,20 @@ def create_conversation(
         ConversationService.assign(db, conversation, payload.assigned_membership_id)
         db.flush()
     except InboxDomainError as exc:
+        if payload.assigned_membership_id is not None:
+            visible_membership = db.scalar(
+                select(Membership.id).where(
+                    Membership.id == payload.assigned_membership_id,
+                    Membership.company_id == access.company.id,
+                )
+            )
+            if visible_membership is None:
+                _hidden_resource(
+                    request,
+                    access,
+                    payload.assigned_membership_id,
+                    resource_type="membership",
+                )
         _raise_domain_error(exc)
     _audit(
         request,
@@ -597,6 +625,20 @@ def assign_conversation(
             )
             db.flush()
     except InboxDomainError as exc:
+        if payload.assigned_membership_id is not None:
+            visible_membership = db.scalar(
+                select(Membership.id).where(
+                    Membership.id == payload.assigned_membership_id,
+                    Membership.company_id == access.company.id,
+                )
+            )
+            if visible_membership is None:
+                _hidden_resource(
+                    request,
+                    access,
+                    payload.assigned_membership_id,
+                    resource_type="membership",
+                )
         _raise_domain_error(exc)
     if previous != conversation.assigned_membership_id:
         _audit(

@@ -248,6 +248,16 @@ def test_create_refuses_foreign_contact_or_lead(
     )
     assert response.status_code == 422
     assert "company" not in response.text.lower()
+    with Session(migrated_engine) as session:
+        audit = session.scalar(
+            select(AuditLog).where(
+                AuditLog.company_id == integration_identity.company_id,
+                AuditLog.action == "security.cross_tenant",
+                AuditLog.resource_type == resource,
+                AuditLog.resource_id == str(value),
+            )
+        )
+    assert audit is not None
 
 
 def test_create_refuses_inactive_assignee(
@@ -543,6 +553,16 @@ def test_assignment_is_idempotent_and_foreign_assignment_is_refused(
         json={"assigned_membership_id": str(integration_identity.other_membership_id)},
     )
     assert foreign.status_code == 422
+    with Session(migrated_engine) as session:
+        audit = session.scalar(
+            select(AuditLog).where(
+                AuditLog.company_id == integration_identity.company_id,
+                AuditLog.action == "security.cross_tenant",
+                AuditLog.resource_type == "membership",
+                AuditLog.resource_id == str(integration_identity.other_membership_id),
+            )
+        )
+    assert audit is not None
 
 
 def test_status_lifecycle_resolution_closure_and_reopen(
