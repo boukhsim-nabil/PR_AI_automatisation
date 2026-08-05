@@ -253,6 +253,12 @@ class Message(UUIDPrimaryKeyMixin, Base):
             "status",
             "created_at",
         ),
+        Index(
+            "ix_messages_company_conversation_discarded",
+            "company_id",
+            "conversation_id",
+            "discarded_at",
+        ),
     )
 
     company_id: Mapped[UUID] = mapped_column(
@@ -292,3 +298,4 @@ class Message(UUIDPrimaryKeyMixin, Base):
     updated_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), onupdate=func.now()
     )
+    discarded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

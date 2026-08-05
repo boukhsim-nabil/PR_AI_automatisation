@@ -366,3 +366,97 @@ class InboundMessageCommand(StrictInboxSchema):
 class SystemEventCommand(StrictInboxSchema):
     body_text: BodyText
     subject: ShortText | None = None
+
+
+class MessageDraftRequest(StrictInboxSchema):
+    content_type: MessageContentType = MessageContentType.TEXT
+    subject: ShortText | None = None
+    body_text: BodyText | None = None
+    body_html: BodyText | None = None
+    reply_to_message_id: UUID | None = None
+
+    @model_validator(mode="after")
+    def validate_mvp_content(self) -> Self:
+        if self.content_type not in {MessageContentType.TEXT, MessageContentType.HTML}:
+            raise ValueError("Only text and html drafts are supported")
+        if self.body_text is None and self.body_html is None:
+            raise ValueError("A draft requires body_text or body_html")
+        return self
+
+
+class MessageDraftPatch(NonEmptyUpdate):
+    subject: ShortText | None = None
+    body_text: BodyText | None = None
+    body_html: BodyText | None = None
+
+
+class SimulatedInboundRequest(StrictInboxSchema):
+    conversation_id: UUID
+    sender_contact_id: UUID | None = None
+    sender_identifier: Identifier | None = None
+    content_type: MessageContentType = MessageContentType.TEXT
+    subject: ShortText | None = None
+    body_text: BodyText | None = None
+    body_html: BodyText | None = None
+    external_message_id: Identifier | None = None
+    reply_to_message_id: UUID | None = None
+
+    @model_validator(mode="after")
+    def validate_simulation(self) -> Self:
+        if self.content_type not in {MessageContentType.TEXT, MessageContentType.HTML}:
+            raise ValueError("Only text and html inbound simulations are supported")
+        if self.body_text is None and self.body_html is None:
+            raise ValueError("An inbound message requires body_text or body_html")
+        return self
+
+
+class MessageSenderSummary(StrictInboxSchema):
+    sender_type: MessageSenderType
+    membership_id: UUID | None = None
+    contact_id: UUID | None = None
+    display_name: str | None = None
+    identifier: str | None = None
+
+
+class ReplyMessageSummary(StrictInboxSchema):
+    id: UUID
+    direction: MessageDirection
+    content_type: MessageContentType
+    body_preview: str | None
+    created_at: datetime
+
+
+class MessageAttachmentSummary(StrictInboxSchema):
+    id: UUID
+    filename: str
+    mime_type: str
+    size_bytes: int = Field(gt=0)
+    scan_status: AttachmentScanStatus
+    created_at: datetime
+
+
+class MessageApiRead(StrictInboxSchema):
+    id: UUID
+    conversation_id: UUID
+    direction: MessageDirection
+    sender: MessageSenderSummary
+    content_type: MessageContentType
+    is_system_event: bool
+    subject: str | None
+    body_text: str | None
+    body_html: str | None
+    html_requires_sanitization: bool
+    status: MessageStatus
+    sent_at: datetime | None
+    received_at: datetime | None
+    created_at: datetime
+    updated_at: datetime | None
+    reply_to_message: ReplyMessageSummary | None
+    attachments: list[MessageAttachmentSummary]
+
+
+class MessagePage(StrictInboxSchema):
+    items: list[MessageApiRead]
+    next_cursor: str | None
+    has_more: bool
+    page_size: int = Field(ge=1, le=100)

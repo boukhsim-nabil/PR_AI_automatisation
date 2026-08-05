@@ -40,6 +40,7 @@ PERMISSION_DEFINITIONS = {
     "inbox.tags.manage": "Créer et associer des tags de l’Inbox.",
     "inbox.archive": "Archiver des conversations de l’Inbox.",
     "inbox.takeover": "Prendre le contrôle humain d’une conversation.",
+    "inbox.simulate_inbound": "Simuler une réception Inbox hors production.",
 }
 
 ALL_PERMISSIONS = frozenset(PERMISSION_DEFINITIONS)
