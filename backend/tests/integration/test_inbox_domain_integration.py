@@ -8,6 +8,7 @@ from uuid import UUID
 import pytest
 from sqlalchemy import Engine, insert, select, text, update
 from sqlalchemy.engine import Connection
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
 from app.db.models import (
@@ -354,3 +355,261 @@ def test_all_inbox_tables_are_invisible_without_tenant_context(
             MessageAttachment,
         ):
             assert connection.execute(select(model)).all() == []
+
+
+def test_received_message_is_immutable_for_direct_application_sql(
+    migrated_engine: Engine,
+    integration_identity: IntegrationIdentity,
+) -> None:
+    with pytest.raises(DBAPIError, match="message status is immutable"):
+        with migrated_engine.begin() as connection:
+            _set_context(connection, integration_identity.company_id)
+            aggregate = _create_complete_aggregate(connection, integration_identity)
+            connection.execute(
+                update(Message)
+                .where(Message.id == aggregate.message_id)
+                .values(body_text="Forbidden direct rewrite")
+            )
+
+
+def test_persisted_message_lifecycle_allows_only_expected_changes(
+    migrated_engine: Engine,
+    integration_identity: IntegrationIdentity,
+) -> None:
+    sent_at = datetime(2026, 8, 5, 10, 0, tzinfo=UTC)
+    with migrated_engine.begin() as connection:
+        _set_context(connection, integration_identity.company_id)
+        conversation_id = connection.scalar(
+            insert(Conversation)
+            .values(
+                company_id=integration_identity.company_id,
+                channel="email",
+                status="open",
+                priority="normal",
+            )
+            .returning(Conversation.id)
+        )
+        message_id = connection.scalar(
+            insert(Message)
+            .values(
+                company_id=integration_identity.company_id,
+                conversation_id=conversation_id,
+                direction="outbound",
+                sender_type="user",
+                sender_membership_id=integration_identity.membership_id,
+                content_type="text",
+                body_text="Draft v1",
+                status="draft",
+            )
+            .returning(Message.id)
+        )
+        connection.execute(
+            update(Message).where(Message.id == message_id).values(body_text="Draft v2")
+        )
+        connection.execute(update(Message).where(Message.id == message_id).values(status="queued"))
+        connection.execute(
+            update(Message).where(Message.id == message_id).values(status="sent", sent_at=sent_at)
+        )
+        connection.execute(
+            update(Message).where(Message.id == message_id).values(status="delivered")
+        )
+        connection.execute(update(Message).where(Message.id == message_id).values(status="read"))
+        stored = connection.execute(
+            select(Message.status, Message.body_text, Message.sent_at).where(
+                Message.id == message_id
+            )
+        ).one()
+        assert stored == ("read", "Draft v2", sent_at)
+
+
+def test_invalid_persisted_message_transition_is_rejected(
+    migrated_engine: Engine,
+    integration_identity: IntegrationIdentity,
+) -> None:
+    with pytest.raises(DBAPIError, match="transition is invalid"):
+        with migrated_engine.begin() as connection:
+            _set_context(connection, integration_identity.company_id)
+            conversation_id = connection.scalar(
+                insert(Conversation)
+                .values(
+                    company_id=integration_identity.company_id,
+                    channel="email",
+                    status="open",
+                    priority="normal",
+                )
+                .returning(Conversation.id)
+            )
+            message_id = connection.scalar(
+                insert(Message)
+                .values(
+                    company_id=integration_identity.company_id,
+                    conversation_id=conversation_id,
+                    direction="outbound",
+                    sender_type="user",
+                    sender_membership_id=integration_identity.membership_id,
+                    content_type="text",
+                    body_text="Queued",
+                    status="queued",
+                )
+                .returning(Message.id)
+            )
+            connection.execute(
+                update(Message).where(Message.id == message_id).values(status="read")
+            )
+
+
+def test_archived_and_closed_conversation_guards_are_persisted(
+    migrated_engine: Engine,
+    integration_identity: IntegrationIdentity,
+) -> None:
+    archived_id: UUID
+    closed_id: UUID
+    with migrated_engine.begin() as connection:
+        _set_context(connection, integration_identity.company_id)
+        archived_id = connection.scalar(
+            insert(Conversation)
+            .values(
+                company_id=integration_identity.company_id,
+                channel="internal",
+                status="archived",
+                priority="normal",
+                archived_at=datetime.now(UTC),
+            )
+            .returning(Conversation.id)
+        )
+        closed_id = connection.scalar(
+            insert(Conversation)
+            .values(
+                company_id=integration_identity.company_id,
+                channel="internal",
+                status="closed",
+                priority="normal",
+                closed_at=datetime.now(UTC),
+            )
+            .returning(Conversation.id)
+        )
+        assert archived_id is not None
+        assert closed_id is not None
+
+    with pytest.raises(DBAPIError, match="archived conversation is immutable"):
+        with migrated_engine.begin() as connection:
+            _set_context(connection, integration_identity.company_id)
+            connection.execute(
+                update(Conversation)
+                .where(Conversation.id == archived_id)
+                .values(subject="Forbidden")
+            )
+
+    with pytest.raises(DBAPIError, match="may only be reopened"):
+        with migrated_engine.begin() as connection:
+            _set_context(connection, integration_identity.company_id)
+            connection.execute(
+                update(Conversation)
+                .where(Conversation.id == closed_id)
+                .values(status="open", closed_at=None, subject="Combined change")
+            )
+
+    with migrated_engine.begin() as connection:
+        _set_context(connection, integration_identity.company_id)
+        connection.execute(
+            update(Conversation)
+            .where(Conversation.id == closed_id)
+            .values(status="open", closed_at=None)
+        )
+        connection.execute(
+            update(Conversation).where(Conversation.id == closed_id).values(subject="Allowed")
+        )
+        assert (
+            connection.scalar(select(Conversation.subject).where(Conversation.id == closed_id))
+            == "Allowed"
+        )
+
+
+def test_archived_conversation_rejects_all_direct_child_insertions(
+    migrated_engine: Engine,
+    integration_identity: IntegrationIdentity,
+) -> None:
+    conversation_id: UUID
+    message_id: UUID
+    tag_id: UUID
+    with migrated_engine.begin() as connection:
+        _set_context(connection, integration_identity.company_id)
+        conversation_id = connection.scalar(
+            insert(Conversation)
+            .values(
+                company_id=integration_identity.company_id,
+                channel="internal",
+                status="open",
+                priority="normal",
+            )
+            .returning(Conversation.id)
+        )
+        message_id = connection.scalar(
+            insert(Message)
+            .values(
+                company_id=integration_identity.company_id,
+                conversation_id=conversation_id,
+                direction="inbound",
+                sender_type="external",
+                content_type="text",
+                body_text="Existing message",
+                status="received",
+            )
+            .returning(Message.id)
+        )
+        tag_id = connection.scalar(
+            insert(ConversationTag)
+            .values(company_id=integration_identity.company_id, name="Archived guard")
+            .returning(ConversationTag.id)
+        )
+        connection.execute(
+            update(Conversation)
+            .where(Conversation.id == conversation_id)
+            .values(status="archived", archived_at=datetime.now(UTC))
+        )
+        assert conversation_id is not None
+        assert message_id is not None
+        assert tag_id is not None
+
+    insertions = (
+        insert(Message).values(
+            company_id=integration_identity.company_id,
+            conversation_id=conversation_id,
+            direction="inbound",
+            sender_type="external",
+            content_type="text",
+            body_text="Late message",
+            status="received",
+        ),
+        insert(ConversationParticipant).values(
+            company_id=integration_identity.company_id,
+            conversation_id=conversation_id,
+            participant_type="external",
+            external_identifier="late-participant",
+        ),
+        insert(ConversationNote).values(
+            company_id=integration_identity.company_id,
+            conversation_id=conversation_id,
+            author_membership_id=integration_identity.membership_id,
+            body="Late note",
+        ),
+        insert(ConversationTagLink).values(
+            company_id=integration_identity.company_id,
+            conversation_id=conversation_id,
+            tag_id=tag_id,
+            created_by_membership_id=integration_identity.membership_id,
+        ),
+        insert(MessageAttachment).values(
+            company_id=integration_identity.company_id,
+            message_id=message_id,
+            filename="late.txt",
+            mime_type="text/plain",
+            size_bytes=1,
+            storage_key="tenant/inbox/late.txt",
+        ),
+    )
+    for statement in insertions:
+        with pytest.raises(DBAPIError, match="closed or archived conversation"):
+            with migrated_engine.begin() as connection:
+                _set_context(connection, integration_identity.company_id)
+                connection.execute(statement)
