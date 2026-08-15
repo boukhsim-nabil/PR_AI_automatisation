@@ -383,6 +383,7 @@ def test_draft_queues_then_sends_and_becomes_immutable(
         ).status_code
         == 422
     )
+    assert integration_client.delete(f"{base}/draft", headers=headers).status_code == 422
     sent = integration_client.post(f"{base}/send", headers=headers)
     assert sent.status_code == 200, sent.text
     assert sent.json()["status"] == "sent"
@@ -595,6 +596,26 @@ def test_simulation_requires_technical_permission_and_non_production(
         },
     )
     assert production.status_code == 404
+
+
+def test_simulation_accepts_explicit_e2e_environment(
+    integration_client: TestClient,
+    integration_identity: IntegrationIdentity,
+    migrated_engine: Engine,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conversation = _conversation(migrated_engine, integration_identity)
+    monkeypatch.setattr(message_routes, "settings", SimpleNamespace(environment="e2e"))
+    response = integration_client.post(
+        "/v1/inbox/messages/simulate-inbound",
+        headers=_owner_headers(integration_client, integration_identity),
+        json={
+            "conversation_id": str(conversation.id),
+            "sender_identifier": "controlled-e2e-sender",
+            "body_text": "Allowed in E2E",
+        },
+    )
+    assert response.status_code == 201, response.text
 
 
 def test_simulation_permission_is_limited_to_owner_and_admin(

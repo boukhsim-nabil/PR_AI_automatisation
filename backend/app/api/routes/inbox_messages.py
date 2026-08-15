@@ -465,7 +465,7 @@ def simulate_inbound(
     access: InboxSimulator,
     db: DatabaseSession,
 ) -> MessageApiRead:
-    if settings.environment.strip().lower() not in {"development", "test"}:
+    if settings.environment.strip().lower() not in {"development", "test", "e2e"}:
         raise HTTPException(status_code=404, detail="Not found")
     conversation = _conversation_or_404(db, request, access, payload.conversation_id)
     if payload.external_message_id:
