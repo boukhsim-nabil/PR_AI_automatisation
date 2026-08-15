@@ -11,6 +11,7 @@ node_modules/
 .next/
 .next-e2e/
 playwright-report/
+playwright-report-api/
 test-results/
 backend-e2e*.log
 .local/

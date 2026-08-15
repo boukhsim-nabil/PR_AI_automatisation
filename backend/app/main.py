@@ -1,8 +1,11 @@
+import os
+
 from fastapi import FastAPI
 
 import app.db.session as db_session_module
 from app.api.router import api_router
 from app.core.config import settings
+from app.core.e2e import identify_e2e_database
 from app.middleware.correlation import CorrelationAuditMiddleware
 from app.middleware.tenant_security import TenantSecurityMiddleware
 
@@ -21,7 +24,14 @@ def create_app() -> FastAPI:
 
     @application.get("/health", tags=["health"])
     def health() -> dict[str, str]:
-        return {"status": "ok"}
+        payload = {"status": "ok"}
+        environment = settings.environment.strip().lower()
+        if environment in {"test", "e2e"}:
+            payload["environment"] = environment
+            database_marker = identify_e2e_database(os.getenv("DATABASE_URL", ""))
+            if database_marker is not None:
+                payload["database_marker"] = database_marker
+        return payload
 
     return application
 

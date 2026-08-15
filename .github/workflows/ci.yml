@@ -148,6 +148,16 @@ jobs:
       E2E_PASSWORD: CI-Only-E2E-Password-42!
       E2E_VIEWER_EMAIL: e2e-viewer@example.com
       E2E_VIEWER_PASSWORD: CI-Only-Viewer-Password-42!
+      E2E_SUPPORT_EMAIL: e2e-support@example.com
+      E2E_SUPPORT_PASSWORD: CI-Only-Support-Password-42!
+      E2E_SALES_PASSWORD: CI-Only-Sales-Password-42!
+      E2E_FOREIGN_EMAIL: e2e-owner-b@example.com
+      E2E_FOREIGN_PASSWORD: CI-Only-Owner-B-Password-42!
+      E2E_COMPANY_ID: 11111111-1111-4111-8111-111111111111
+      E2E_FOREIGN_COMPANY_ID: 44444444-4444-4444-8444-444444444444
+      E2E_DATABASE_MARKER: automation_e2e
+      API_BASE_URL: http://localhost:8000
+      E2E_PLATFORM_ADMIN_PASSWORD: CI-Only-Platform-Admin-Password-42!
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -184,6 +194,9 @@ jobs:
       - name: Install Chromium
         working-directory: frontend
         run: npx playwright install --with-deps chromium
+      - name: Run Playwright API
+        working-directory: frontend
+        run: npm run test:api
       - name: Run Playwright
         working-directory: frontend
         run: npm run test:e2e
@@ -196,5 +209,6 @@ jobs:
           retention-days: 7
           path: |
             frontend/playwright-report/
+            frontend/playwright-report-api/
             frontend/test-results/
             backend-e2e.log

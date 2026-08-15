@@ -4,6 +4,7 @@ from uuid import UUID
 
 from sqlalchemy import select
 
+from app.core.e2e import identify_e2e_database
 from app.core.security import hash_password
 from app.db.models import (
     Company,
@@ -20,20 +21,23 @@ from app.db.session import SessionLocal
 E2E_COMPANY_ID = UUID("11111111-1111-4111-8111-111111111111")
 E2E_USER_ID = UUID("22222222-2222-4222-8222-222222222222")
 E2E_OWNER_MEMBERSHIP_ID = UUID("12121212-1212-4121-8121-121212121212")
-E2E_EMAIL = "e2e-user@example.com"
+E2E_EMAIL = os.getenv("E2E_EMAIL", "e2e-user@example.com")
 E2E_VIEWER_ID = UUID("33333333-3333-4333-8333-333333333333")
 E2E_VIEWER_MEMBERSHIP_ID = UUID("34343434-3434-4343-8343-343434343434")
-E2E_VIEWER_EMAIL = "e2e-viewer@example.com"
+E2E_VIEWER_EMAIL = os.getenv("E2E_VIEWER_EMAIL", "e2e-viewer@example.com")
+E2E_SUPPORT_ID = UUID("dededede-dede-4ded-8ded-dededededede")
+E2E_SUPPORT_MEMBERSHIP_ID = UUID("dfdfdfdf-dfdf-4fdf-8fdf-dfdfdfdfdfdf")
+E2E_SUPPORT_EMAIL = os.getenv("E2E_SUPPORT_EMAIL", "e2e-support@example.com")
 E2E_SALES_ID = UUID("abababab-abab-4bab-8bab-abababababab")
 E2E_SALES_MEMBERSHIP_ID = UUID("acacacac-acac-4cac-8cac-acacacacacac")
 E2E_SALES_EMAIL = "e2e-sales@example.com"
-E2E_SALES_PASSWORD = "Local-Only-Sales-Password-42!"
 E2E_CONTACT_ID = UUID("77777777-7777-4777-8777-777777777777")
 E2E_LEAD_ID = UUID("88888888-8888-4888-8888-888888888888")
 
 E2E_FOREIGN_COMPANY_ID = UUID("44444444-4444-4444-8444-444444444444")
 E2E_FOREIGN_USER_ID = UUID("55555555-5555-4555-8555-555555555555")
 E2E_FOREIGN_MEMBERSHIP_ID = UUID("45454545-4545-4454-8454-454545454545")
+E2E_FOREIGN_EMAIL = os.getenv("E2E_FOREIGN_EMAIL", "e2e-owner-b@example.com")
 E2E_FOREIGN_CONTACT_ID = UUID("99999999-9999-4999-8999-999999999999")
 E2E_FOREIGN_LEAD_ID = UUID("66666666-6666-4666-8666-666666666666")
 E2E_PLATFORM_ADMIN_ID = UUID("aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa")
@@ -47,9 +51,25 @@ def _required_password(name: str) -> str:
     return value
 
 
+def _guard_e2e_database() -> None:
+    environment = os.getenv("APP_ENV", "").strip().lower()
+    if environment not in {"test", "e2e"}:
+        raise RuntimeError("E2E seed requires APP_ENV=test or APP_ENV=e2e")
+    raw_url = os.getenv("DATABASE_URL", "")
+    if identify_e2e_database(raw_url) is None:
+        raise RuntimeError(
+            "Unsafe DATABASE_URL: E2E seed only accepts the dedicated "
+            "automation_test or automation_e2e PostgreSQL identity"
+        )
+
+
 def seed() -> None:
+    _guard_e2e_database()
     password = _required_password("E2E_PASSWORD")
     viewer_password = _required_password("E2E_VIEWER_PASSWORD")
+    support_password = _required_password("E2E_SUPPORT_PASSWORD")
+    sales_password = _required_password("E2E_SALES_PASSWORD")
+    foreign_password = _required_password("E2E_FOREIGN_PASSWORD")
     platform_password = _required_password("E2E_PLATFORM_ADMIN_PASSWORD")
 
     with SessionLocal.begin() as session:
@@ -146,6 +166,36 @@ def seed() -> None:
         viewer_membership.role_id = roles["viewer"].id
         session.flush()
 
+        support = session.get(User, E2E_SUPPORT_ID)
+        if support is None:
+            support = User(
+                id=E2E_SUPPORT_ID,
+                email=E2E_SUPPORT_EMAIL,
+                display_name="E2E Support A",
+                status="active",
+            )
+            session.add(support)
+        support.password_hash = hash_password(support_password)
+        support.status = "active"
+        session.flush()
+        support_membership = session.scalar(
+            select(Membership).where(
+                Membership.company_id == company.id,
+                Membership.user_id == support.id,
+            )
+        )
+        if support_membership is None:
+            support_membership = Membership(
+                id=E2E_SUPPORT_MEMBERSHIP_ID,
+                company_id=company.id,
+                user_id=support.id,
+                joined_at=datetime.now(UTC),
+            )
+            session.add(support_membership)
+        support_membership.status = "active"
+        support_membership.role_id = roles["support"].id
+        session.flush()
+
         sales = session.get(User, E2E_SALES_ID)
         if sales is None:
             sales = User(
@@ -155,7 +205,7 @@ def seed() -> None:
                 status="active",
             )
             session.add(sales)
-        sales.password_hash = hash_password(E2E_SALES_PASSWORD)
+        sales.password_hash = hash_password(sales_password)
         sales.status = "active"
         session.flush()
         sales_membership = session.scalar(
@@ -215,12 +265,15 @@ def seed() -> None:
         if foreign_user is None:
             foreign_user = User(
                 id=E2E_FOREIGN_USER_ID,
-                email="e2e-foreign@example.com",
-                display_name="E2E Foreign User",
+                email=E2E_FOREIGN_EMAIL,
+                display_name="E2E Owner B",
                 status="active",
-                password_hash=hash_password("Synthetic-Foreign-Password-42!"),
+                password_hash=hash_password(foreign_password),
             )
             session.add(foreign_user)
+        foreign_user.email = E2E_FOREIGN_EMAIL
+        foreign_user.password_hash = hash_password(foreign_password)
+        foreign_user.status = "active"
         session.flush()
         foreign_membership = session.scalar(
             select(Membership).where(
@@ -266,7 +319,8 @@ def seed() -> None:
     print(
         f"E2E seed ready for companies {E2E_COMPANY_ID} / "
         f"{E2E_FOREIGN_COMPANY_ID} and users {E2E_EMAIL}, "
-        f"{E2E_SALES_EMAIL}, {E2E_VIEWER_EMAIL}."
+        f"{E2E_SUPPORT_EMAIL}, {E2E_SALES_EMAIL}, {E2E_VIEWER_EMAIL}, "
+        f"{E2E_FOREIGN_EMAIL}."
     )
 
 
