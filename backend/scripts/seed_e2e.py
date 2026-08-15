@@ -4,7 +4,7 @@ from uuid import UUID
 
 from sqlalchemy import select
 
-from app.core.e2e import identify_e2e_database
+from app.core.e2e import ensure_e2e_database
 from app.core.security import hash_password
 from app.db.models import (
     Company,
@@ -51,20 +51,8 @@ def _required_password(name: str) -> str:
     return value
 
 
-def _guard_e2e_database() -> None:
-    environment = os.getenv("APP_ENV", "").strip().lower()
-    if environment not in {"test", "e2e"}:
-        raise RuntimeError("E2E seed requires APP_ENV=test or APP_ENV=e2e")
-    raw_url = os.getenv("DATABASE_URL", "")
-    if identify_e2e_database(raw_url) is None:
-        raise RuntimeError(
-            "Unsafe DATABASE_URL: E2E seed only accepts the dedicated "
-            "automation_test or automation_e2e PostgreSQL identity"
-        )
-
-
 def seed() -> None:
-    _guard_e2e_database()
+    ensure_e2e_database()
     password = _required_password("E2E_PASSWORD")
     viewer_password = _required_password("E2E_VIEWER_PASSWORD")
     support_password = _required_password("E2E_SUPPORT_PASSWORD")
