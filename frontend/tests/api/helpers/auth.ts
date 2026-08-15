@@ -37,6 +37,11 @@ export function e2eIdentities() {
       password: required("E2E_VIEWER_PASSWORD"),
       companyId: required("E2E_COMPANY_ID"),
     },
+    inboxReaderA: {
+      email: required("E2E_INBOX_READER_EMAIL"),
+      password: required("E2E_INBOX_READER_PASSWORD"),
+      companyId: required("E2E_COMPANY_ID"),
+    },
     ownerB: {
       email: required("E2E_FOREIGN_EMAIL"),
       password: required("E2E_FOREIGN_PASSWORD"),

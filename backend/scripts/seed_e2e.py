@@ -9,10 +9,15 @@ from app.core.security import hash_password
 from app.db.models import (
     Company,
     Contact,
+    CrmActivity,
+    CrmTask,
     Lead,
     Membership,
+    Permission,
     PlatformRole,
     PlatformUserRole,
+    Role,
+    RolePermission,
     User,
 )
 from app.db.seeds import seed_rbac
@@ -33,6 +38,12 @@ E2E_SALES_MEMBERSHIP_ID = UUID("acacacac-acac-4cac-8cac-acacacacacac")
 E2E_SALES_EMAIL = "e2e-sales@example.com"
 E2E_CONTACT_ID = UUID("77777777-7777-4777-8777-777777777777")
 E2E_LEAD_ID = UUID("88888888-8888-4888-8888-888888888888")
+E2E_CRM_TASK_ID = UUID("89898989-8989-4989-8989-898989898989")
+E2E_CRM_ACTIVITY_ID = UUID("90909090-9090-4090-8090-909090909090")
+E2E_INBOX_READER_ID = UUID("91919191-9191-4191-8191-919191919191")
+E2E_INBOX_READER_MEMBERSHIP_ID = UUID("92929292-9292-4292-8292-929292929292")
+E2E_INBOX_READER_ROLE_ID = UUID("93939393-9393-4393-8393-939393939393")
+E2E_INBOX_READER_EMAIL = os.getenv("E2E_INBOX_READER_EMAIL", "e2e-inbox-reader@example.com")
 
 E2E_FOREIGN_COMPANY_ID = UUID("44444444-4444-4444-8444-444444444444")
 E2E_FOREIGN_USER_ID = UUID("55555555-5555-4555-8555-555555555555")
@@ -57,11 +68,34 @@ def seed() -> None:
     viewer_password = _required_password("E2E_VIEWER_PASSWORD")
     support_password = _required_password("E2E_SUPPORT_PASSWORD")
     sales_password = _required_password("E2E_SALES_PASSWORD")
+    inbox_reader_password = _required_password("E2E_INBOX_READER_PASSWORD")
     foreign_password = _required_password("E2E_FOREIGN_PASSWORD")
     platform_password = _required_password("E2E_PLATFORM_ADMIN_PASSWORD")
 
     with SessionLocal.begin() as session:
         roles = seed_rbac(session)
+        inbox_read_permission = session.scalar(
+            select(Permission).where(Permission.code == "inbox.read")
+        )
+        if inbox_read_permission is None:
+            raise RuntimeError("Run Alembic migrations before the E2E seed")
+        inbox_reader_role = session.get(Role, E2E_INBOX_READER_ROLE_ID)
+        if inbox_reader_role is None:
+            inbox_reader_role = Role(
+                id=E2E_INBOX_READER_ROLE_ID,
+                code="e2e_inbox_reader",
+                name="E2E Inbox Reader",
+                is_system=False,
+            )
+            session.add(inbox_reader_role)
+            session.flush()
+        if session.get(RolePermission, (inbox_reader_role.id, inbox_read_permission.id)) is None:
+            session.add(
+                RolePermission(
+                    role_id=inbox_reader_role.id,
+                    permission_id=inbox_read_permission.id,
+                )
+            )
         platform_role = session.scalar(
             select(PlatformRole).where(PlatformRole.code == "platform_super_admin")
         )
@@ -214,6 +248,37 @@ def seed() -> None:
         sales_membership.role_id = roles["sales"].id
         session.flush()
 
+        inbox_reader = session.get(User, E2E_INBOX_READER_ID)
+        if inbox_reader is None:
+            inbox_reader = User(
+                id=E2E_INBOX_READER_ID,
+                email=E2E_INBOX_READER_EMAIL,
+                display_name="E2E Inbox Reader",
+                status="active",
+            )
+            session.add(inbox_reader)
+        inbox_reader.email = E2E_INBOX_READER_EMAIL
+        inbox_reader.password_hash = hash_password(inbox_reader_password)
+        inbox_reader.status = "active"
+        session.flush()
+        inbox_reader_membership = session.scalar(
+            select(Membership).where(
+                Membership.company_id == company.id,
+                Membership.user_id == inbox_reader.id,
+            )
+        )
+        if inbox_reader_membership is None:
+            inbox_reader_membership = Membership(
+                id=E2E_INBOX_READER_MEMBERSHIP_ID,
+                company_id=company.id,
+                user_id=inbox_reader.id,
+                joined_at=datetime.now(UTC),
+            )
+            session.add(inbox_reader_membership)
+        inbox_reader_membership.status = "active"
+        inbox_reader_membership.role_id = inbox_reader_role.id
+        session.flush()
+
         contact = session.get(Contact, E2E_CONTACT_ID)
         if contact is None:
             contact = Contact(
@@ -240,6 +305,34 @@ def seed() -> None:
                 created_by_membership_id=membership.id,
             )
             session.add(lead)
+
+        crm_task = session.get(CrmTask, E2E_CRM_TASK_ID)
+        if crm_task is None:
+            session.add(
+                CrmTask(
+                    id=E2E_CRM_TASK_ID,
+                    company_id=company.id,
+                    lead_id=lead.id,
+                    contact_id=contact.id,
+                    title="Relance E2E Inbox",
+                    priority="high",
+                    status="todo",
+                    created_by_membership_id=membership.id,
+                )
+            )
+        crm_activity = session.get(CrmActivity, E2E_CRM_ACTIVITY_ID)
+        if crm_activity is None:
+            session.add(
+                CrmActivity(
+                    id=E2E_CRM_ACTIVITY_ID,
+                    company_id=company.id,
+                    contact_id=contact.id,
+                    lead_id=lead.id,
+                    actor_membership_id=membership.id,
+                    activity_type="note",
+                    subject="Activité E2E Inbox",
+                )
+            )
 
         foreign_company = session.get(Company, E2E_FOREIGN_COMPANY_ID)
         if foreign_company is None:
@@ -308,7 +401,7 @@ def seed() -> None:
         f"E2E seed ready for companies {E2E_COMPANY_ID} / "
         f"{E2E_FOREIGN_COMPANY_ID} and users {E2E_EMAIL}, "
         f"{E2E_SUPPORT_EMAIL}, {E2E_SALES_EMAIL}, {E2E_VIEWER_EMAIL}, "
-        f"{E2E_FOREIGN_EMAIL}."
+        f"{E2E_INBOX_READER_EMAIL}, {E2E_FOREIGN_EMAIL}."
     )
 
 
