@@ -19,3 +19,10 @@ invité, l'acceptation Owner et l'écriture append-only d'audit.
 Un rôle tenant ne peut pas présenter son JWT au portail. Inversement, un token plateforme
 ne contient aucun tenant et est refusé par les routes métier. Il n'existe ni impersonation
 ni ouverture des prospects d'un client.
+
+En production et en staging, `DATABASE_URL` doit utiliser un login non-superuser qui
+n'est jamais membre de `automation_migrator`. L'API verifie cette propriete avant tout
+`SET LOCAL ROLE` et refuse la transaction si l'identite est privilegiee. Alembic et le
+bootstrap utilisent exclusivement `MIGRATION_DATABASE_URL`, fourni pour la duree de
+l'operation puis retire. Aucun login partage entre API et migration n'est autorise hors
+environnement local de test.

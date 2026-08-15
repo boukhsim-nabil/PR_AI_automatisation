@@ -23,7 +23,10 @@ export async function POST(request: Request) {
       cache: "no-store",
     }).catch(() => undefined);
   }
-  const response = NextResponse.redirect(new URL("/admin/login", request.url), 303);
+  const response = NextResponse.redirect(
+    new URL("/admin/login", request.headers.get("origin") ?? request.url),
+    303,
+  );
   response.cookies.set(PLATFORM_ACCESS_COOKIE, "", {
     expires: new Date(0),
     maxAge: 0,

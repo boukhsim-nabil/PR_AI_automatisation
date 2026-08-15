@@ -11,13 +11,14 @@ from __future__ import annotations
 
 import argparse
 import getpass
+import os
 import re
 
-from sqlalchemy import select
+from sqlalchemy import create_engine, select
+from sqlalchemy.orm import Session
 
 from app.core.security import hash_password
 from app.db.models import PlatformRole, PlatformUserRole, User
-from app.db.session import SessionLocal
 from app.services.platform import normalize_email
 
 
@@ -37,7 +38,14 @@ def main() -> None:
     args = parser.parse_args()
     email = normalize_email(args.email)
 
-    with SessionLocal.begin() as db:
+    database_url = os.getenv("MIGRATION_DATABASE_URL")
+    if not database_url:
+        raise SystemExit(
+            "MIGRATION_DATABASE_URL is required; never bootstrap with the runtime DATABASE_URL."
+        )
+
+    engine = create_engine(database_url, pool_pre_ping=True)
+    with Session(engine) as db, db.begin():
         role = db.scalar(select(PlatformRole).where(PlatformRole.code == "platform_super_admin"))
         if role is None:
             raise SystemExit("Run `alembic upgrade head` before bootstrapping the administrator.")

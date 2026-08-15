@@ -86,11 +86,12 @@ test("provisionne, invite, suspend et réactive sans exposer de token", async ({
   const dom = await page.locator("body").innerText();
   expect(dom).not.toContain("token=");
 
-  const invitations = await page.request.get(
-    `/api/admin/platform/companies/${companyId}/invitations`,
-  );
-  expect(invitations.status()).toBe(200);
-  const invitation = (await invitations.json())[0] as { id: string };
+  const invitations = await page.evaluate(async (url) => {
+    const response = await fetch(url, { cache: "no-store" });
+    return { status: response.status, body: await response.json() };
+  }, `/api/admin/platform/companies/${companyId}/invitations`);
+  expect(invitations.status).toBe(200);
+  const invitation = invitations.body[0] as { id: string };
   expect(invitation.id).toBe(created.invitation.id);
   const rawToken = await invitationToken(invitation.id);
   expect(rawToken.length).toBeGreaterThan(32);

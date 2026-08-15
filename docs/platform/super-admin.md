@@ -8,7 +8,9 @@ indépendant des rôles tenant et ne crée aucun `Membership`.
 Après `alembic upgrade head`, exécuter depuis `backend` :
 
 ```powershell
+$env:MIGRATION_DATABASE_URL = "postgresql+psycopg://<migration_user>:<secret>@<host>:5432/<database>"
 .\.venv\Scripts\python.exe -m scripts.bootstrap_platform_admin --email votre-administrateur@domaine.com
+Remove-Item Env:MIGRATION_DATABASE_URL
 ```
 
 Le mot de passe est demandé par saisie masquée et n'apparaît pas dans l'historique

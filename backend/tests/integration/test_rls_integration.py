@@ -4,10 +4,22 @@ from uuid import UUID
 import pytest
 from sqlalchemy import Engine, create_engine, select, text, update
 from sqlalchemy.exc import DBAPIError
+from sqlalchemy.orm import Session
 
 from app.db.models import Membership
+from app.db.tenant import enforce_safe_runtime_identity
 
 pytestmark = pytest.mark.integration
+
+
+def test_production_rejects_privileged_runtime_database_identity(
+    migrated_engine: Engine,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("APP_ENV", "production")
+    with Session(migrated_engine) as session:
+        with pytest.raises(RuntimeError, match="Unsafe DATABASE_URL"):
+            enforce_safe_runtime_identity(session)
 
 
 class IntegrationIdentity(Protocol):

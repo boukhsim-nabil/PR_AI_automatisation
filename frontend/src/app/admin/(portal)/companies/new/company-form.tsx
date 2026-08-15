@@ -3,6 +3,8 @@
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 
+import { apiErrorFromResponse } from "@/lib/api-error";
+
 export function CompanyForm() {
   const router = useRouter();
   const [error, setError] = useState("");
@@ -20,8 +22,11 @@ export function CompanyForm() {
       body: JSON.stringify({ ...data, trial_days: Number(data.trial_days) }),
     }).catch(() => null);
     if (!response?.ok) {
-      const body = await response?.json().catch(() => null);
-      setError(body?.detail ?? "La création a échoué.");
+      setError(
+        response
+          ? (await apiErrorFromResponse(response)).message
+          : "Le service de création est indisponible.",
+      );
       setPending(false);
       return;
     }

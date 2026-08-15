@@ -3,7 +3,8 @@
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 
-import { Assignee, CrmTask, LeadStatus, statusLabels } from "@/lib/crm";
+import { CRM_ACTIVITY_CREATED_EVENT } from "@/app/dashboard/crm/leads/[id]/activity-timeline";
+import { Assignee, CrmActivity, CrmTask, LeadStatus, statusLabels } from "@/lib/crm";
 import { apiErrorFromResponse, userFacingApiError } from "@/lib/api-error";
 
 type Capabilities = {
@@ -43,11 +44,13 @@ export function LeadActions({
   const [pending, setPending] = useState<string | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
   const [status, setStatus] = useState<LeadStatus>(currentStatus);
+  const [taskItems, setTaskItems] = useState<CrmTask[]>(tasks);
 
   async function run(
     key: string,
     request: () => Promise<Response>,
     success: string,
+    onSuccess?: (response: Response) => Promise<void> | void,
   ): Promise<boolean> {
     if (pending) return false;
     setPending(key);
@@ -58,6 +61,7 @@ export function LeadActions({
         setNotice({ kind: "error", message: userFacingApiError(await apiErrorFromResponse(response)) });
         return false;
       }
+      await onSuccess?.(response);
       setNotice({ kind: "success", message: success });
       router.refresh();
       return true;
@@ -109,6 +113,12 @@ export function LeadActions({
           description: data.get("description") || null,
         }),
       "Note ajoutée.",
+      async (response) => {
+        const activity = (await response.json()) as CrmActivity;
+        window.dispatchEvent(
+          new CustomEvent<CrmActivity>(CRM_ACTIVITY_CREATED_EVENT, { detail: activity }),
+        );
+      },
     );
     if (succeeded) form.reset();
   }
@@ -130,6 +140,10 @@ export function LeadActions({
           due_at: dueAt ? new Date(dueAt).toISOString() : null,
         }),
       "Tâche créée.",
+      async (response) => {
+        const created = (await response.json()) as CrmTask;
+        setTaskItems((current) => [created, ...current]);
+      },
     );
     if (succeeded) form.reset();
   }
@@ -239,13 +253,16 @@ export function LeadActions({
 
       <section className="rounded-2xl border border-slate-200 bg-white p-5" aria-labelledby="tasks-title">
         <h2 id="tasks-title" className="font-bold text-slate-950">Tâches</h2>
-        {tasks.length === 0 ? <p className="mt-3 text-sm text-slate-600">Aucune tâche.</p> : (
+        {taskItems.length === 0 ? <p className="mt-3 text-sm text-slate-600">Aucune tâche.</p> : (
           <ul className="mt-3 divide-y divide-slate-100">
-            {tasks.map((task) => (
+            {taskItems.map((task) => (
               <li key={task.id} className="flex items-center justify-between gap-3 py-3">
                 <div><p className="text-sm font-semibold text-slate-800">{task.title}</p><p className="text-xs text-slate-600">{task.status}</p></div>
                 {capabilities.manageTasks && task.status !== "completed" ? (
-                  <button className="secondary-button px-3 py-2" disabled={pending !== null} type="button" onClick={() => void run(`complete-${task.id}`, () => api(`/api/crm/tasks/${task.id}/complete`), "Tâche terminée.")}>Terminer</button>
+                  <button className="secondary-button px-3 py-2" disabled={pending !== null} type="button" onClick={() => void run(`complete-${task.id}`, () => api(`/api/crm/tasks/${task.id}/complete`), "Tâche terminée.", async (response) => {
+                    const completed = (await response.json()) as CrmTask;
+                    setTaskItems((current) => current.map((item) => item.id === completed.id ? completed : item));
+                  })}>Terminer</button>
                 ) : null}
               </li>
             ))}

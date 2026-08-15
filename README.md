@@ -111,6 +111,14 @@ $env:E2E_EMAIL = "e2e-user@example.com"
 $env:E2E_PASSWORD = "Local-Only-E2E-Password-42!"
 $env:E2E_VIEWER_EMAIL = "e2e-viewer@example.com"
 $env:E2E_VIEWER_PASSWORD = "Local-Only-Viewer-Password-42!"
+$env:E2E_SUPPORT_EMAIL = "e2e-support@example.com"
+$env:E2E_SUPPORT_PASSWORD = "Local-Only-Support-Password-42!"
+$env:E2E_SALES_PASSWORD = "Local-Only-Sales-Password-42!"
+$env:E2E_FOREIGN_EMAIL = "e2e-owner-b@example.com"
+$env:E2E_FOREIGN_PASSWORD = "Local-Only-Owner-B-Password-42!"
+$env:E2E_COMPANY_ID = "11111111-1111-4111-8111-111111111111"
+$env:E2E_FOREIGN_COMPANY_ID = "44444444-4444-4444-8444-444444444444"
+$env:E2E_PLATFORM_ADMIN_PASSWORD = "Local-Only-Platform-Admin-Password-42!"
 $env:DEFAULT_COMPANY_ID = "11111111-1111-4111-8111-111111111111"
 $env:BACKEND_API_URL = "http://127.0.0.1:8000"
 
@@ -127,11 +135,22 @@ $env:E2E_EMAIL = "e2e-user@example.com"
 $env:E2E_PASSWORD = "Local-Only-E2E-Password-42!"
 $env:E2E_VIEWER_EMAIL = "e2e-viewer@example.com"
 $env:E2E_VIEWER_PASSWORD = "Local-Only-Viewer-Password-42!"
+$env:E2E_SUPPORT_EMAIL = "e2e-support@example.com"
+$env:E2E_SUPPORT_PASSWORD = "Local-Only-Support-Password-42!"
+$env:E2E_SALES_PASSWORD = "Local-Only-Sales-Password-42!"
+$env:E2E_FOREIGN_EMAIL = "e2e-owner-b@example.com"
+$env:E2E_FOREIGN_PASSWORD = "Local-Only-Owner-B-Password-42!"
+$env:E2E_COMPANY_ID = "11111111-1111-4111-8111-111111111111"
+$env:E2E_FOREIGN_COMPANY_ID = "44444444-4444-4444-8444-444444444444"
+$env:E2E_DATABASE_MARKER = "automation_test"
+$env:API_BASE_URL = "http://localhost:8000"
+$env:E2E_PLATFORM_ADMIN_PASSWORD = "Local-Only-Platform-Admin-Password-42!"
 $env:DEFAULT_COMPANY_ID = "11111111-1111-4111-8111-111111111111"
 $env:BACKEND_API_URL = "http://127.0.0.1:8000"
 Set-Location .\frontend
 npx.cmd playwright install chromium
 npm.cmd run test:e2e
+npm.cmd run test:api
 ```
 
 ## Super-administration plateforme
@@ -142,8 +161,10 @@ commande :
 
 ```powershell
 Set-Location .\backend
+$env:MIGRATION_DATABASE_URL = "postgresql+psycopg://<migration_user>:<secret>@<host>:5432/<database>"
 .\.venv\Scripts\python.exe -m alembic upgrade head
 .\.venv\Scripts\python.exe -m scripts.bootstrap_platform_admin --email admin-plateforme@votre-domaine.com
+Remove-Item Env:MIGRATION_DATABASE_URL
 Set-Location ..
 ```
 

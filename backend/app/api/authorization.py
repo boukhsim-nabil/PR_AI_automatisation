@@ -70,7 +70,7 @@ def get_active_membership(
             Membership.company_id == auth.company_id,
             Membership.status == "active",
             User.status == "active",
-            Company.status == "active",
+            Company.status.in_(("active", "onboarding")),
         )
     )
     row = db.execute(statement).one_or_none()

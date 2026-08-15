@@ -175,6 +175,22 @@ def test_owner_invitation_new_user_is_single_use_and_role_is_backend_imposed(
         },
     )
     assert accepted.status_code == 200, accepted.text
+    tenant_login = integration_client.post(
+        "/v1/auth/login",
+        json={
+            "email": owner_email,
+            "password": "Invited-Owner-Only!5qL8",
+            "company_id": body["company"]["id"],
+        },
+    )
+    assert tenant_login.status_code == 200, tenant_login.text
+    assert (
+        integration_client.get(
+            "/v1/auth/me",
+            headers={"Authorization": f"Bearer {tenant_login.json()['access_token']}"},
+        ).status_code
+        == 200
+    )
     reused = integration_client.post(
         "/v1/invitations/accept",
         json={"token": raw_token, "password": "Invited-Owner-Only!5qL8"},
@@ -201,6 +217,48 @@ def test_owner_invitation_new_user_is_single_use_and_role_is_backend_imposed(
             )
             == 1
         )
+    email_file.unlink(missing_ok=True)
+
+
+def test_new_owner_invitation_rejects_weak_password_and_missing_confirmation(
+    integration_client: TestClient,
+    platform_admin: dict[str, str],
+) -> None:
+    headers = _platform_headers(integration_client, platform_admin)
+    owner_email = f"weak-password-{uuid4().hex[:8]}@example.com"
+    created = integration_client.post(
+        "/v1/platform/companies", headers=headers, json=_company_payload(owner_email)
+    )
+    assert created.status_code == 201, created.text
+    invitation_id = created.json()["invitation"]["id"]
+    email_file = Path(__file__).resolve().parents[3] / ".local" / "emails" / f"{invitation_id}.json"
+    raw_token = json.loads(email_file.read_text(encoding="utf-8"))["accept_url"].split("token=", 1)[
+        1
+    ]
+
+    weak = integration_client.post(
+        "/v1/invitations/accept",
+        json={
+            "token": raw_token,
+            "first_name": "Weak",
+            "last_name": "Password",
+            "password": "short",
+            "password_confirmation": "short",
+            "accept_terms": True,
+        },
+    )
+    assert weak.status_code == 422
+    missing_confirmation = integration_client.post(
+        "/v1/invitations/accept",
+        json={
+            "token": raw_token,
+            "first_name": "No",
+            "last_name": "Confirmation",
+            "password": "Strong-Enough-Password!7",
+            "accept_terms": True,
+        },
+    )
+    assert missing_confirmation.status_code == 422
     email_file.unlink(missing_ok=True)
 
 
@@ -242,6 +300,8 @@ def test_suspension_revokes_sessions_and_reactivation_does_not_restore_them(
         headers=headers,
     )
     assert reactivated.status_code == 200
+    old_headers = {"Authorization": f"Bearer {tenant_login.json()['access_token']}"}
+    assert integration_client.get("/v1/auth/me", headers=old_headers).status_code == 403
     with Session(migrated_engine) as db:
         assert (
             db.scalar(

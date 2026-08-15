@@ -110,7 +110,7 @@ class AcceptInvitation(StrictModel):
     token: str = Field(min_length=32, max_length=512)
     first_name: str | None = Field(default=None, max_length=120)
     last_name: str | None = Field(default=None, max_length=120)
-    password: SecretStr
+    password: SecretStr = Field(min_length=12, max_length=256)
     password_confirmation: SecretStr | None = None
     accept_terms: bool = False
 

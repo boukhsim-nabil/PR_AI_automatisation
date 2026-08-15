@@ -567,7 +567,9 @@ def test_html_is_untrusted_and_technical_error_is_hidden(
     assert "storage_key" not in body["attachments"][0]
 
 
-def test_simulation_requires_technical_permission_and_non_production(
+@pytest.mark.parametrize("environment", ["development", "staging", "production"])
+def test_simulation_requires_technical_permission_and_test_environment(
+    environment: str,
     integration_client: TestClient,
     integration_identity: IntegrationIdentity,
     migrated_engine: Engine,
@@ -585,8 +587,8 @@ def test_simulation_requires_technical_permission_and_non_production(
     )
     assert viewer.status_code == 403
     own = _conversation(migrated_engine, integration_identity)
-    monkeypatch.setattr(message_routes, "settings", SimpleNamespace(environment="production"))
-    production = integration_client.post(
+    monkeypatch.setattr(message_routes, "settings", SimpleNamespace(environment=environment))
+    outside_test = integration_client.post(
         "/v1/inbox/messages/simulate-inbound",
         headers=_owner_headers(integration_client, integration_identity),
         json={
@@ -595,7 +597,7 @@ def test_simulation_requires_technical_permission_and_non_production(
             "body_text": "Forbidden",
         },
     )
-    assert production.status_code == 404
+    assert outside_test.status_code == 404
 
 
 def test_simulation_accepts_explicit_e2e_environment(

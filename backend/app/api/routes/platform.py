@@ -586,7 +586,12 @@ def accept_invitation(
     user = db.scalar(select(User).where(User.email == item.email_normalized))
     password = payload.password.get_secret_value()
     if user is None:
-        if not payload.accept_terms or not payload.first_name or not payload.last_name:
+        if (
+            not payload.accept_terms
+            or not payload.first_name
+            or not payload.last_name
+            or payload.password_confirmation is None
+        ):
             raise HTTPException(status_code=422, detail="Profile and terms acceptance required")
         user_id = db.scalar(
             text("SELECT platform_create_invited_user(:email, :password_hash, :display_name)"),

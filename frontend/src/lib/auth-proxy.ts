@@ -12,11 +12,18 @@ export function backendAuthUrl(path: string): string {
 }
 
 export function isSafeCookieRequest(request: Request): boolean {
-  const expectedOrigin = new URL(request.url).origin;
   const origin = request.headers.get("origin");
   const fetchSite = request.headers.get("sec-fetch-site");
-  if (origin && origin !== expectedOrigin) return false;
   if (fetchSite && fetchSite !== "same-origin" && fetchSite !== "none") return false;
+  if (origin) {
+    const host = request.headers.get("host");
+    if (!host) return false;
+    try {
+      if (new URL(origin).host !== host) return false;
+    } catch {
+      return false;
+    }
+  }
   return true;
 }
 

@@ -1,3 +1,4 @@
+import os
 from uuid import UUID
 
 from sqlalchemy import text
@@ -7,10 +8,34 @@ APPLICATION_DATABASE_ROLE = "automation_app"
 PLATFORM_DATABASE_ROLE = "automation_platform_app"
 
 
+def enforce_safe_runtime_identity(session: Session) -> None:
+    """Reject privileged/shared database identities outside local test environments."""
+    if session.get_bind().dialect.name != "postgresql":
+        return
+    if os.getenv("APP_ENV", "development").lower() not in {"production", "staging"}:
+        return
+    unsafe = session.execute(
+        text(
+            """
+            SELECT r.rolsuper
+                   OR pg_has_role(session_user, 'automation_migrator', 'MEMBER')
+            FROM pg_roles AS r
+            WHERE r.rolname = session_user
+            """
+        )
+    ).scalar_one_or_none()
+    if unsafe is not False:
+        raise RuntimeError(
+            "Unsafe DATABASE_URL: the runtime login must be non-superuser and must not "
+            "belong to automation_migrator"
+        )
+
+
 def enforce_application_role(session: Session) -> None:
     """Lower a PostgreSQL transaction to the RLS-constrained application role."""
     if session.get_bind().dialect.name != "postgresql":
         return
+    enforce_safe_runtime_identity(session)
     session.execute(text(f"SET LOCAL ROLE {APPLICATION_DATABASE_ROLE}"))
 
 
@@ -18,6 +43,7 @@ def enforce_platform_role(session: Session) -> None:
     """Use the constrained platform role without granting tenant table access."""
     if session.get_bind().dialect.name != "postgresql":
         return
+    enforce_safe_runtime_identity(session)
     session.execute(text(f"SET LOCAL ROLE {PLATFORM_DATABASE_ROLE}"))
 
 

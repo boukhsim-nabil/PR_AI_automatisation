@@ -153,10 +153,15 @@ test.describe.serial("CRM opérationnel", () => {
     await page.goto("/dashboard/crm");
     await expect(page.getByRole("heading", { name: "Prospects", exact: true })).toBeVisible();
     await expect(page.getByRole("link", { name: "Nouveau prospect" })).toHaveCount(0);
-    const response = await page.request.post("/api/crm/contacts", {
-      data: { last_name: "Forbidden Prospect" },
+    const status = await page.evaluate(async () => {
+      const response = await fetch("/api/crm/contacts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ last_name: "Forbidden Prospect" }),
+      });
+      return response.status;
     });
-    expect(response.status()).toBe(403);
+    expect(status).toBe(403);
   });
 
   test("9. conserve les changements après rafraîchissement", async ({ page }) => {

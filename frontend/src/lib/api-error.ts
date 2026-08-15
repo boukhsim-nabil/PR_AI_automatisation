@@ -31,12 +31,18 @@ export function classifyApiStatus(status: number): ApiErrorKind {
 
 export async function apiErrorFromResponse(response: Response): Promise<ApiError> {
   const payload = (await response.json().catch(() => ({}))) as {
-    detail?: string | Array<{ msg?: string }>;
+    detail?: string | Array<{ loc?: Array<string | number>; msg?: string }>;
   };
   const detail =
     typeof payload.detail === "string"
       ? payload.detail
-      : payload.detail?.map((item) => item.msg).filter(Boolean).join(", ");
+      : payload.detail
+          ?.map((item) => {
+            const field = item.loc?.at(-1);
+            return item.msg ? `${field ? `${field}: ` : ""}${item.msg}` : null;
+          })
+          .filter(Boolean)
+          .join(", ");
   return new ApiError(
     response.status,
     classifyApiStatus(response.status),
