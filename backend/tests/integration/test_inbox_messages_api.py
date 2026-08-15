@@ -296,6 +296,10 @@ def test_delete_draft_is_logical_and_irreversible(
         integration_client.get(f"/v1/inbox/messages/{draft['id']}", headers=headers).status_code
         == 404
     )
+    detail = integration_client.get(f"/v1/inbox/conversations/{conversation.id}", headers=headers)
+    assert detail.status_code == 200, detail.text
+    assert detail.json()["message_count"] == 0
+    assert detail.json()["last_message"] is None
     with Session(migrated_engine) as session:
         stored = session.get(Message, UUID(str(draft["id"])))
         assert stored is not None and stored.discarded_at is not None

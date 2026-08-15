@@ -527,6 +527,7 @@ def read_conversation(
             .where(
                 Message.company_id == access.company.id,
                 Message.conversation_id == conversation.id,
+                Message.discarded_at.is_(None),
             )
         )
         or 0
@@ -536,6 +537,7 @@ def read_conversation(
         .where(
             Message.company_id == access.company.id,
             Message.conversation_id == conversation.id,
+            Message.discarded_at.is_(None),
         )
         .order_by(Message.created_at.desc(), Message.id.desc())
         .limit(1)
